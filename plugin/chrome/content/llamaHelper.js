@@ -17,6 +17,7 @@ class LlamaHelper {
         this._contextSize = null;
         this._textEncoder = new TextEncoder();
         this._stderrTask = null;
+        this._nativeReady = false;
     }
 
     isLoaded() {
@@ -39,6 +40,7 @@ class LlamaHelper {
         this._modelPath = null;
         this._contextSize = null;
         this._maxTokensDefault = null;
+        this._nativeReady = false;
     }
 
     async translate(text, sourceLang, targetLang) {
@@ -132,32 +134,60 @@ class LlamaHelper {
         );
     }
 
-    _getReadyMarkerPath(dirPath) {
-        return PathUtils.join(dirPath, ".ready.json");
+    async _cleanupOldNativeDirs() {
+        const baseDir = PathUtils.join(Zotero.Profile.dir, "easytrans", "native");
+        const currentVersion = EasyTrans?.version || "dev";
+        let entries;
+        try {
+            entries = await IOUtils.readDir(baseDir);
+        } catch {
+            return;
+        }
+
+        for (const entry of entries) {
+            if (!entry?.name) continue;
+            if (entry.name === currentVersion) continue;
+            const target = PathUtils.join(baseDir, entry.name);
+            try {
+                await IOUtils.remove(target, { recursive: true });
+            } catch (e) {
+                Zotero.debug("LlamaHelper: Failed to remove old native dir " + target + " - " + e.message);
+            }
+        }
     }
 
     async _extractAll() {
         const nativeDir = this._getNativeDir();
+        await this._cleanupOldNativeDirs();
         await IOUtils.makeDirectory(nativeDir, { createAncestors: true, ignoreExisting: true, permissions: 0o755 });
         const helperPath = PathUtils.join(nativeDir, this._getHelperName());
-        const markerPath = this._getReadyMarkerPath(nativeDir);
-
-        const helperExists = await IOUtils.exists(helperPath);
-        const markerExists = await IOUtils.exists(markerPath);
-        if (!helperExists || !markerExists) {
-            await this._extractHelper(nativeDir);
-            await this._extractLibs(nativeDir);
-            const marker = {
-                version: EasyTrans?.version || "dev",
-                platform: this._getPlatform(),
-                helper: this._getHelperName(),
-                updatedAt: new Date().toISOString()
-            };
-            await IOUtils.writeUTF8(markerPath, JSON.stringify(marker, null, 2));
-        }
 
         this._tmpDir = nativeDir;
         this._helperPath = helperPath;
+        if (this._nativeReady) return;
+
+        const platform = this._getPlatform();
+        const helperExists = await IOUtils.exists(helperPath);
+        const libs = await this._getLibList(platform);
+        const missingLibs = [];
+        for (const name of libs) {
+            const libPath = PathUtils.join(nativeDir, name);
+            const exists = await IOUtils.exists(libPath);
+            if (!exists) missingLibs.push(name);
+        }
+
+        if (helperExists && missingLibs.length === 0) {
+            this._nativeReady = true;
+            return;
+        }
+
+        if (!helperExists) {
+            await this._extractHelper(nativeDir);
+        }
+        if (missingLibs.length > 0) {
+            await this._extractLibs(nativeDir, missingLibs, platform);
+        }
+        this._nativeReady = true;
     }
 
     async _extractHelper(tmpDir) {
@@ -170,21 +200,25 @@ class LlamaHelper {
         const data = new Uint8Array(req.response || []);
         const outPath = PathUtils.join(tmpDir, this._getHelperName());
         await IOUtils.write(outPath, data);
-        await IOUtils.setPermissions(outPath, 0o755);
+        if (!Zotero.isWin) {
+            await IOUtils.setPermissions(outPath, 0o755);
+        }
     }
 
-    async _extractLibs(tmpDir) {
-        const platform = this._getPlatform();
-        const libs = await this._getLibList(platform);
+    async _extractLibs(tmpDir, libs, platform) {
+        const plt = platform || this._getPlatform();
+        const list = Array.isArray(libs) ? libs : await this._getLibList(plt);
 
-        for (const name of libs) {
-            const url = EasyTrans.rootURI + "chrome/content/lib/" + platform + "/" + name;
+        for (const name of list) {
+            const url = EasyTrans.rootURI + "chrome/content/lib/" + plt + "/" + name;
             try {
                 const req = await Zotero.HTTP.request("GET", url, { responseType: "arraybuffer" });
                 const data = new Uint8Array(req.response || []);
                 const outPath = PathUtils.join(tmpDir, name);
                 await IOUtils.write(outPath, data);
-                await IOUtils.setPermissions(outPath, 0o755);
+                if (!Zotero.isWin) {
+                    await IOUtils.setPermissions(outPath, 0o755);
+                }
             } catch (e) {
                 Zotero.debug("LlamaHelper: Failed to extract lib " + name + " - " + e.message);
             }
