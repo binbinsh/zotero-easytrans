@@ -481,6 +481,8 @@ int main(int argc, char **argv) {
     struct llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = -1;
     mparams.main_gpu = 0;
+    mparams.use_mmap = true;
+    mparams.use_mlock = false;
 
     struct llama_model *model = llama_load_model_from_file(model_path, mparams);
     if (!model) {

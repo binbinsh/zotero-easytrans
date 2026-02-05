@@ -14,6 +14,7 @@ class LlamaHelper {
         this._reqId = 0;
         this._modelPath = null;
         this._maxTokensDefault = null;
+        this._contextSize = null;
         this._textEncoder = new TextEncoder();
         this._stderrTask = null;
     }
@@ -26,42 +27,46 @@ class LlamaHelper {
         if (this._initialized && this._modelPath === modelPath) return;
 
         await this._extractAll();
-        await this._startServer(modelPath, contextSize, maxTokens);
         this._initialized = true;
         this._modelPath = modelPath;
+        this._contextSize = contextSize;
         this._maxTokensDefault = maxTokens || 512;
     }
 
     async dispose() {
+        await this._stopProcess();
         this._initialized = false;
         this._modelPath = null;
-        if (this._proc) {
-            try {
-                await this._send({ type: "shutdown" }, true);
-            } catch {}
-            try {
-                this._proc.kill();
-            } catch {}
-        }
-        this._stderrTask = null;
-        this._proc = null;
-        this._stdoutBuffer = "";
+        this._contextSize = null;
+        this._maxTokensDefault = null;
     }
 
     async translate(text, sourceLang, targetLang) {
-        if (!this._initialized) {
+        if (!this._initialized || !this._modelPath) {
             throw new Error("Model not loaded");
         }
-        const sourceLangName = this.getLanguageName(sourceLang);
-        const targetLangName = this.getLanguageName(targetLang);
-        const prompt = this.buildTranslationPrompt(text, sourceLangName, targetLangName);
-        const maxTokens = this.estimateMaxTokens(text);
 
-        const res = await this._send({ type: "translate", prompt, max_tokens: maxTokens });
-        if (!res.ok) {
-            throw new Error(res.error || "Translation failed");
-        }
-        return this.cleanTranslationResponse(res.text || "");
+        const task = async () => {
+            await this._extractAll();
+            await this._startServer(this._modelPath, this._contextSize, this._maxTokensDefault);
+            try {
+                const sourceLangName = this.getLanguageName(sourceLang);
+                const targetLangName = this.getLanguageName(targetLang);
+                const prompt = this.buildTranslationPrompt(text, sourceLangName, targetLangName);
+                const maxTokens = this.estimateMaxTokens(text);
+
+                const res = await this._send({ type: "translate", prompt, max_tokens: maxTokens }, true);
+                if (!res.ok) {
+                    throw new Error(res.error || "Translation failed");
+                }
+                return this.cleanTranslationResponse(res.text || "");
+            } finally {
+                await this._stopProcess();
+            }
+        };
+
+        this._queue = this._queue.then(task, task);
+        return this._queue;
     }
 
     buildTranslationPrompt(text, sourceLang, targetLang) {
@@ -247,6 +252,20 @@ class LlamaHelper {
                 if (chunk === null) break;
             }
         } catch {}
+    }
+
+    async _stopProcess() {
+        if (this._proc) {
+            try {
+                await this._send({ type: "shutdown" }, true);
+            } catch {}
+            try {
+                this._proc.kill();
+            } catch {}
+        }
+        this._stderrTask = null;
+        this._proc = null;
+        this._stdoutBuffer = "";
     }
 
     _getPlatform() {
