@@ -54,6 +54,61 @@ function findWinMingwImportLib(libDir) {
     return null;
 }
 
+function findWinDll(libDir) {
+    const dll = path.join(libDir, "llama.dll");
+    return fs.existsSync(dll) ? dll : null;
+}
+
+function createDefFromDll(dllPath, defPath) {
+    const output = execSync(`dumpbin /exports "${dllPath}"`, { stdio: ["ignore", "pipe", "pipe"] })
+        .toString();
+    const lines = output.split(/\r?\n/);
+    const exports = [];
+    let inTable = false;
+    for (const line of lines) {
+        if (!inTable && line.toLowerCase().includes("ordinal") && line.toLowerCase().includes("name")) {
+            inTable = true;
+            continue;
+        }
+        if (!inTable) continue;
+        const match = line.match(/^\s*\d+\s+\w+\s+[0-9a-fA-F]+\s+(\S+)/);
+        if (match) {
+            exports.push(match[1]);
+        }
+    }
+
+    if (exports.length === 0) {
+        return false;
+    }
+
+    const content = [
+        `LIBRARY ${path.basename(dllPath)}`,
+        "EXPORTS",
+        ...exports.map((name) => `  ${name}`)
+    ].join("\n") + "\n";
+    fs.writeFileSync(defPath, content);
+    return true;
+}
+
+function ensureWinImportLib(libDir) {
+    const existing = findWinImportLib(libDir);
+    if (existing) return existing;
+
+    const dll = findWinDll(libDir);
+    if (!dll) return null;
+
+    const defPath = path.join(libDir, "llama.def");
+    const libPath = path.join(libDir, "llama.lib");
+
+    if (!fs.existsSync(defPath)) {
+        const ok = createDefFromDll(dll, defPath);
+        if (!ok) return null;
+    }
+
+    execSync(`lib /def:"${defPath}" /out:"${libPath}" /machine:x64`, { stdio: "inherit" });
+    return path.basename(libPath);
+}
+
 function build() {
     const args = parseArgs();
     const platform = args.platform || process.platform;
@@ -89,7 +144,7 @@ function build() {
     }
 
     if (dir === "win32") {
-        const importLib = findWinImportLib(libDir);
+        const importLib = ensureWinImportLib(libDir);
         if (importLib) {
             const includeFlags = includeDirs.map((inc) => `/I${q(inc)}`);
             const cmd = [
