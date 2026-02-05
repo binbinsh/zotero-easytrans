@@ -57,24 +57,40 @@ function build() {
     const outDir = args.out || path.join(ROOT, "plugin", "chrome", "content", "bin", dir);
 
     requirePath("Source file", SRC);
-    requirePath("Include directory", includeDir);
     requirePath("Library directory", libDir);
     fs.mkdirSync(outDir, { recursive: true });
 
     const outName = dir === "win32" ? "llama-helper.exe" : "llama-helper";
     const outPath = path.join(outDir, outName);
 
+    const includeDirs = (() => {
+        const raw = String(includeDir || "").trim();
+        if (!raw) return [];
+        const sep = dir === "win32" ? /[;,]/ : /[:,]/;
+        return raw.split(sep).map((s) => s.trim()).filter(Boolean);
+    })();
+
+    if (includeDirs.length === 0) {
+        throw new Error("Include directory not found");
+    }
+    for (const inc of includeDirs) {
+        if (!fs.existsSync(inc)) {
+            throw new Error(`Include directory not found: ${inc}`);
+        }
+    }
+
     if (dir === "win32") {
         const importLib = findWinImportLib(libDir);
         if (!importLib) {
             throw new Error("Windows import library not found (expected llama.lib or libllama.lib)");
         }
+        const includeFlags = includeDirs.map((inc) => `/I${q(inc)}`);
         const cmd = [
             "cl",
             "/nologo",
             "/O2",
             `/Fe:${q(outPath)}`,
-            `/I${q(includeDir)}`,
+            ...includeFlags,
             q(SRC),
             "/link",
             `/LIBPATH:${q(libDir)}`,
@@ -99,8 +115,7 @@ function build() {
         "-o",
         q(outPath),
         q(SRC),
-        "-I",
-        q(includeDir),
+        ...includeDirs.flatMap((inc) => ["-I", q(inc)]),
         "-L",
         q(libDir),
         libArg

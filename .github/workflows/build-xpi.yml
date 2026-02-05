@@ -47,23 +47,24 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          LLAMA_VERSION=b7933
+          LLAMA_VERSION=b7947
           TARBALL=/tmp/llama-src.tar.gz
           curl -L -o "${TARBALL}" "https://github.com/ggml-org/llama.cpp/archive/refs/tags/${LLAMA_VERSION}.tar.gz"
-          LLAMA_DIR=$(tar -tzf "${TARBALL}" | head -1 | cut -d/ -f1)
           tar -xzf "${TARBALL}" -C /tmp
-          echo "LLAMA_INCLUDE=/tmp/${LLAMA_DIR}/include" >> $GITHUB_ENV
+          LLAMA_DIR=$(ls /tmp | grep "llama.cpp-${LLAMA_VERSION}" | head -1)
+          echo "LLAMA_INCLUDE=/tmp/${LLAMA_DIR}/include:/tmp/${LLAMA_DIR}/ggml/include" >> $GITHUB_ENV
 
       - name: Download llama.cpp headers (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $version = "b7933"
+          $version = "b7947"
           $zip = "$env:TEMP\\llama-src.zip"
           Invoke-WebRequest -Uri "https://github.com/ggml-org/llama.cpp/archive/refs/tags/$version.zip" -OutFile $zip
           Expand-Archive -Path $zip -DestinationPath $env:TEMP -Force
           $dir = Get-ChildItem $env:TEMP -Directory -Filter "llama.cpp-$version*" | Select-Object -First 1
-          "LLAMA_INCLUDE=$($dir.FullName)\\include" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $inc = "$($dir.FullName)\\include;$($dir.FullName)\\ggml\\include"
+          "LLAMA_INCLUDE=$inc" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Prune other platform libs
         shell: bash
