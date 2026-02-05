@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Zotero EasyTrans",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Offline translation with side-by-side comparison using TranslateGemma 4B",
   "author": "Binbin Shen",
   "homepage_url": "https://github.com/binbinsh/zotero-easytrans/",

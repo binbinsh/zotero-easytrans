@@ -121,15 +121,43 @@ class LlamaHelper {
         return Math.min(max, suggested);
     }
 
+    _getNativeDir() {
+        const version = EasyTrans?.version || "dev";
+        return PathUtils.join(
+            Zotero.Profile.dir,
+            "easytrans",
+            "native",
+            version,
+            this._getPlatform()
+        );
+    }
+
+    _getReadyMarkerPath(dirPath) {
+        return PathUtils.join(dirPath, ".ready.json");
+    }
+
     async _extractAll() {
-        const tmpDir = PathUtils.join(PathUtils.tempDir, "easytrans-llama");
-        await IOUtils.makeDirectory(tmpDir, { ignoreExisting: true, permissions: 0o755 });
+        const nativeDir = this._getNativeDir();
+        await IOUtils.makeDirectory(nativeDir, { createAncestors: true, ignoreExisting: true, permissions: 0o755 });
+        const helperPath = PathUtils.join(nativeDir, this._getHelperName());
+        const markerPath = this._getReadyMarkerPath(nativeDir);
 
-        await this._extractHelper(tmpDir);
-        await this._extractLibs(tmpDir);
+        const helperExists = await IOUtils.exists(helperPath);
+        const markerExists = await IOUtils.exists(markerPath);
+        if (!helperExists || !markerExists) {
+            await this._extractHelper(nativeDir);
+            await this._extractLibs(nativeDir);
+            const marker = {
+                version: EasyTrans?.version || "dev",
+                platform: this._getPlatform(),
+                helper: this._getHelperName(),
+                updatedAt: new Date().toISOString()
+            };
+            await IOUtils.writeUTF8(markerPath, JSON.stringify(marker, null, 2));
+        }
 
-        this._tmpDir = tmpDir;
-        this._helperPath = PathUtils.join(tmpDir, this._getHelperName());
+        this._tmpDir = nativeDir;
+        this._helperPath = helperPath;
     }
 
     async _extractHelper(tmpDir) {
