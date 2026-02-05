@@ -1,0 +1,20 @@
+{
+  "manifest_version": 2,
+  "name": "Zotero EasyTrans",
+  "version": "1.0.0",
+  "description": "Offline translation with side-by-side comparison using TranslateGemma 4B",
+  "author": "Binbin Shen",
+  "homepage_url": "https://github.com/binbinsh/zotero-easytrans/",
+  "applications": {
+    "zotero": {
+      "id": "easytrans@zotero-easytrans",
+      "update_url": "https://raw.githubusercontent.com/binbinsh/zotero-easytrans/main/update.json",
+      "strict_min_version": "7.0",
+      "strict_max_version": "8.0.*"
+    }
+  },
+  "icons": {
+    "48": "chrome/content/icons/icon48.svg",
+    "96": "chrome/content/icons/icon96.svg"
+  }
+}

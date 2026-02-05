@@ -1,0 +1,32 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build artifacts
+.build-temp/
+plugin/build/
+zotero-easytrans*.xpi
+
+# Generated native bundles
+plugin/chrome/content/lib/manifest.json
+plugin/chrome/content/lib/**
+plugin/chrome/content/bin/**/llama-helper*
+
+# Editor/IDE
+.vscode/
+.idea/
+.claude/
+
+# Env
+.env
+.env.*
+
+# Misc
+*.log

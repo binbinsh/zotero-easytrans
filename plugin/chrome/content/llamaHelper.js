@@ -1,0 +1,319 @@
+/* eslint-disable no-undef */
+/**
+ * LlamaHelper - External helper runner for llama.cpp (cross-platform)
+ */
+
+class LlamaHelper {
+    constructor() {
+        this._initialized = false;
+        this._tmpDir = null;
+        this._helperPath = null;
+        this._proc = null;
+        this._stdoutBuffer = "";
+        this._queue = Promise.resolve();
+        this._reqId = 0;
+        this._modelPath = null;
+        this._maxTokensDefault = null;
+        this._textEncoder = new TextEncoder();
+        this._stderrTask = null;
+    }
+
+    isLoaded() {
+        return this._initialized;
+    }
+
+    async initialize(modelPath, contextSize, maxTokens) {
+        if (this._initialized && this._modelPath === modelPath) return;
+
+        await this._extractAll();
+        await this._startServer(modelPath, contextSize, maxTokens);
+        this._initialized = true;
+        this._modelPath = modelPath;
+        this._maxTokensDefault = maxTokens || 512;
+    }
+
+    async dispose() {
+        this._initialized = false;
+        this._modelPath = null;
+        if (this._proc) {
+            try {
+                await this._send({ type: "shutdown" }, true);
+            } catch {}
+            try {
+                this._proc.kill();
+            } catch {}
+        }
+        this._stderrTask = null;
+        this._proc = null;
+        this._stdoutBuffer = "";
+    }
+
+    async translate(text, sourceLang, targetLang) {
+        if (!this._initialized) {
+            throw new Error("Model not loaded");
+        }
+        const sourceLangName = this.getLanguageName(sourceLang);
+        const targetLangName = this.getLanguageName(targetLang);
+        const prompt = this.buildTranslationPrompt(text, sourceLangName, targetLangName);
+        const maxTokens = this.estimateMaxTokens(text);
+
+        const res = await this._send({ type: "translate", prompt, max_tokens: maxTokens });
+        if (!res.ok) {
+            throw new Error(res.error || "Translation failed");
+        }
+        return this.cleanTranslationResponse(res.text || "");
+    }
+
+    buildTranslationPrompt(text, sourceLang, targetLang) {
+        const src = sourceLang === "auto" ? null : sourceLang;
+        const srcName = src ? this.getLanguageName(src) : null;
+        const tgtName = this.getLanguageName(targetLang);
+        const direction = srcName
+            ? `Translate the following text from ${srcName} to ${tgtName}.`
+            : `Translate the following text to ${tgtName}.`;
+        const instruction = `${direction} Return only the translation, with no extra text.`;
+        return (
+            `<start_of_turn>user\n` +
+            `${instruction}\n\n` +
+            `${text}\n` +
+            `<end_of_turn>\n` +
+            `<start_of_turn>model\n`
+        );
+    }
+
+    cleanTranslationResponse(response) {
+        let out = String(response || "");
+        out = out.replace(/<start_of_turn>|<end_of_turn>|<eos>/g, "");
+        out = out.replace(/<\/?2[^>]+>/g, "");
+        out = out.replace(/^\s*model\s*:?\s*/i, "");
+        return out.trim();
+    }
+
+    getLanguageName(langCode) {
+        const langMap = {
+            "auto": "auto-detect",
+            "en": "English",
+            "zh-CN": "Simplified Chinese",
+            "zh-TW": "Traditional Chinese",
+            "ja": "Japanese",
+            "ko": "Korean",
+            "fr": "French",
+            "de": "German",
+            "es": "Spanish",
+            "pt": "Portuguese",
+            "ru": "Russian",
+            "ar": "Arabic",
+            "it": "Italian"
+        };
+        return langMap[langCode] || langCode;
+    }
+
+    estimateMaxTokens(text) {
+        const max = this._maxTokensDefault || 512;
+        const bytes = this._textEncoder.encode(String(text || "")).length;
+        const estTokens = Math.ceil(bytes / 3);
+        const suggested = Math.max(64, estTokens * 2);
+        return Math.min(max, suggested);
+    }
+
+    async _extractAll() {
+        const tmpDir = PathUtils.join(PathUtils.tempDir, "easytrans-llama");
+        await IOUtils.makeDirectory(tmpDir, { ignoreExisting: true, permissions: 0o755 });
+
+        await this._extractHelper(tmpDir);
+        await this._extractLibs(tmpDir);
+
+        this._tmpDir = tmpDir;
+        this._helperPath = PathUtils.join(tmpDir, this._getHelperName());
+    }
+
+    async _extractHelper(tmpDir) {
+        const url = EasyTrans.rootURI +
+            "chrome/content/bin/" +
+            this._getPlatform() +
+            "/" +
+            this._getHelperName();
+        const req = await Zotero.HTTP.request("GET", url, { responseType: "arraybuffer" });
+        const data = new Uint8Array(req.response || []);
+        const outPath = PathUtils.join(tmpDir, this._getHelperName());
+        await IOUtils.write(outPath, data);
+        await IOUtils.setPermissions(outPath, 0o755);
+    }
+
+    async _extractLibs(tmpDir) {
+        const platform = this._getPlatform();
+        const libs = await this._getLibList(platform);
+
+        for (const name of libs) {
+            const url = EasyTrans.rootURI + "chrome/content/lib/" + platform + "/" + name;
+            try {
+                const req = await Zotero.HTTP.request("GET", url, { responseType: "arraybuffer" });
+                const data = new Uint8Array(req.response || []);
+                const outPath = PathUtils.join(tmpDir, name);
+                await IOUtils.write(outPath, data);
+                await IOUtils.setPermissions(outPath, 0o755);
+            } catch (e) {
+                Zotero.debug("LlamaHelper: Failed to extract lib " + name + " - " + e.message);
+            }
+        }
+    }
+
+    async _startServer(modelPath, contextSize, maxTokens) {
+        if (this._proc) {
+            try { this._proc.kill(); } catch {}
+            this._proc = null;
+        }
+
+        const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+
+        const args = [
+            "--server",
+            "--model",
+            modelPath,
+            "--context",
+            String(contextSize || 4096),
+            "--max-tokens",
+            String(maxTokens || 2048)
+        ];
+
+        this._proc = await Subprocess.call({
+            command: this._helperPath,
+            arguments: args,
+            stdin: "pipe",
+            stdout: "pipe",
+            stderr: "pipe",
+            environment: this._getProcessEnvironment(),
+            environmentAppend: true
+        });
+
+        // Drain stderr to avoid blocking if llama logs during model load
+        this._stderrTask = this._drainStderr();
+    }
+
+    async _send(payload, skipQueue) {
+        if (!this._proc) {
+            throw new Error("Helper process not started");
+        }
+
+        const task = async () => {
+            const id = ++this._reqId;
+            const msg = Object.assign({ id }, payload);
+            const line = JSON.stringify(msg) + "\n";
+            await this._proc.stdin.write(line);
+
+            const respLine = await this._readLine();
+            if (!respLine) {
+                throw new Error("Helper returned empty response");
+            }
+            let resp;
+            try {
+                resp = JSON.parse(respLine);
+            } catch {
+                throw new Error("Helper returned invalid JSON");
+            }
+            return resp;
+        };
+
+        if (skipQueue) {
+            return task();
+        }
+
+        this._queue = this._queue.then(task, task);
+        return this._queue;
+    }
+
+    async _readLine() {
+        while (true) {
+            const idx = this._stdoutBuffer.indexOf("\n");
+            if (idx !== -1) {
+                const line = this._stdoutBuffer.slice(0, idx);
+                this._stdoutBuffer = this._stdoutBuffer.slice(idx + 1);
+                return line;
+            }
+
+            const chunk = await this._proc.stdout.readString();
+            if (chunk === null) {
+                return null;
+            }
+            this._stdoutBuffer += chunk;
+        }
+    }
+
+    async _drainStderr() {
+        if (!this._proc?.stderr) return;
+        try {
+            while (true) {
+                const chunk = await this._proc.stderr.readString();
+                if (chunk === null) break;
+            }
+        } catch {}
+    }
+
+    _getPlatform() {
+        if (Zotero.isMac) return "darwin";
+        if (Zotero.isWin) return "win32";
+        return "linux";
+    }
+
+    _getHelperName() {
+        return this._getPlatform() === "win32" ? "llama-helper.exe" : "llama-helper";
+    }
+
+    _getProcessEnvironment() {
+        if (Zotero.isMac) return { DYLD_LIBRARY_PATH: this._tmpDir };
+        if (Zotero.isWin) return {};
+        return { LD_LIBRARY_PATH: this._tmpDir };
+    }
+
+    async _getLibList(platform) {
+        try {
+            const url = EasyTrans.rootURI + "chrome/content/lib/manifest.json";
+            const req = await Zotero.HTTP.request("GET", url, { responseType: "text" });
+            const manifest = JSON.parse(req.response || req.responseText || "{}");
+            const libs = manifest?.[platform];
+            if (Array.isArray(libs) && libs.length > 0) {
+                return libs;
+            }
+        } catch {}
+
+        return this._getFallbackLibs(platform);
+    }
+
+    _getFallbackLibs(platform) {
+        if (platform === "win32") {
+            return [
+                "llama.dll",
+                "ggml.dll",
+                "ggml-base.dll",
+                "ggml-cpu.dll",
+                "ggml-blas.dll",
+                "ggml-metal.dll",
+                "ggml-rpc.dll",
+                "mtmd.dll"
+            ];
+        }
+
+        const base = [
+            "libllama",
+            "libggml",
+            "libggml-base",
+            "libggml-cpu",
+            "libggml-blas",
+            "libggml-metal",
+            "libggml-rpc",
+            "libmtmd"
+        ];
+
+        const exts = platform === "darwin"
+            ? [".dylib", ".0.dylib", ".0.0.7933.dylib", ".0.9.5.dylib"]
+            : [".so", ".so.0", ".so.0.0.7933", ".so.0.9.5"];
+
+        const libs = [];
+        for (const name of base) {
+            for (const ext of exts) {
+                libs.push(name + ext);
+            }
+        }
+        return libs;
+    }
+}

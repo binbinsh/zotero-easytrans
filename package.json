@@ -1,0 +1,30 @@
+{
+  "name": "zotero-easytrans",
+  "version": "1.0.0",
+  "description": "Offline translation plugin for Zotero 8 using TranslateGemma 4B",
+  "main": "scripts/build.js",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "bundle-native": "node scripts/bundle-native.js",
+    "bundle-all": "node scripts/bundle-native.js && node scripts/build.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zotero-easytrans/zotero-easytrans.git"
+  },
+  "keywords": [
+    "zotero",
+    "translation",
+    "offline",
+    "llama.cpp",
+    "translategemma"
+  ],
+  "author": "EasyTrans Contributors",
+  "license": "MIT",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/zotero-easytrans/zotero-easytrans/issues"
+  },
+  "homepage": "https://github.com/zotero-easytrans/zotero-easytrans#readme",
+  "dependencies": {}
+}
