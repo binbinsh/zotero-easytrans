@@ -45,6 +45,15 @@ function findWinImportLib(libDir) {
     return null;
 }
 
+function findWinMingwImportLib(libDir) {
+    const candidates = ["llama.dll.a", "libllama.dll.a"];
+    for (const name of candidates) {
+        const p = path.join(libDir, name);
+        if (fs.existsSync(p)) return name;
+    }
+    return null;
+}
+
 function build() {
     const args = parseArgs();
     const platform = args.platform || process.platform;
@@ -81,20 +90,39 @@ function build() {
 
     if (dir === "win32") {
         const importLib = findWinImportLib(libDir);
-        if (!importLib) {
-            throw new Error("Windows import library not found (expected llama.lib or libllama.lib)");
+        if (importLib) {
+            const includeFlags = includeDirs.map((inc) => `/I${q(inc)}`);
+            const cmd = [
+                "cl",
+                "/nologo",
+                "/O2",
+                `/Fe:${q(outPath)}`,
+                ...includeFlags,
+                q(SRC),
+                "/link",
+                `/LIBPATH:${q(libDir)}`,
+                importLib
+            ].join(" ");
+            execSync(cmd, { stdio: "inherit" });
+            return;
         }
-        const includeFlags = includeDirs.map((inc) => `/I${q(inc)}`);
+
+        const mingwLib = findWinMingwImportLib(libDir);
+        if (!mingwLib) {
+            throw new Error("Windows import library not found (expected llama.lib, libllama.lib, or *.dll.a)");
+        }
+        const cc = process.env.CC || "gcc";
+        const libArg = mingwLib.startsWith("lib") ? "-llama" : `-l:${mingwLib}`;
         const cmd = [
-            "cl",
-            "/nologo",
-            "/O2",
-            `/Fe:${q(outPath)}`,
-            ...includeFlags,
+            cc,
+            "-O2",
+            "-o",
+            q(outPath),
             q(SRC),
-            "/link",
-            `/LIBPATH:${q(libDir)}`,
-            importLib
+            ...includeDirs.flatMap((inc) => ["-I", q(inc)]),
+            "-L",
+            q(libDir),
+            libArg
         ].join(" ");
         execSync(cmd, { stdio: "inherit" });
         return;
