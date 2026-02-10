@@ -12,6 +12,12 @@ const PLUGIN_DIR = path.join(__dirname, '..', 'plugin');
 const BUILD_DIR = path.join(PLUGIN_DIR, 'build');
 const OUTPUT_FILE = path.join(__dirname, '..', 'zotero-easytrans.xpi');
 
+const UPDATE_URL_MAP = {
+    macos: 'https://raw.githubusercontent.com/binbinsh/zotero-easytrans/main/update-macos.json',
+    windows: 'https://raw.githubusercontent.com/binbinsh/zotero-easytrans/main/update-windows.json',
+    linux: 'https://raw.githubusercontent.com/binbinsh/zotero-easytrans/main/update-linux.json'
+};
+
 // Files and directories to include in the XPI
 const INCLUDE = [
     'manifest.json',
@@ -111,16 +117,43 @@ function getVersion() {
     return manifest.version;
 }
 
+function parsePlatformArg() {
+    const idx = process.argv.indexOf('--platform');
+    if (idx === -1 || idx + 1 >= process.argv.length) return null;
+    const platform = process.argv[idx + 1];
+    if (!UPDATE_URL_MAP[platform]) {
+        console.error(`Unknown platform: ${platform}. Must be one of: ${Object.keys(UPDATE_URL_MAP).join(', ')}`);
+        process.exit(1);
+    }
+    return platform;
+}
+
+function patchManifest(platform) {
+    const manifestPath = path.join(BUILD_DIR, 'manifest.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    manifest.applications.zotero.update_url = UPDATE_URL_MAP[platform];
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+    console.log(`Patched manifest update_url for platform: ${platform}`);
+}
+
 function main() {
     console.log('=================================');
     console.log('Zotero EasyTrans Build Script');
     console.log('=================================\n');
 
     const version = getVersion();
-    console.log(`Version: ${version}\n`);
+    const platform = parsePlatformArg();
+    console.log(`Version: ${version}`);
+    if (platform) console.log(`Platform: ${platform}`);
+    console.log();
 
     clean();
     copyFiles();
+
+    if (platform) {
+        patchManifest(platform);
+    }
+
     createXPI();
 
     console.log('\nBuild complete!');

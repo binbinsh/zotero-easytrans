@@ -30,3 +30,4 @@ plugin/chrome/content/bin/**/llama-helper*
 
 # Misc
 *.log
+vendors/

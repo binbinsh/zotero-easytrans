@@ -6,7 +6,8 @@
   "scripts": {
     "build": "node scripts/build.js",
     "bundle-native": "node scripts/bundle-native.js",
-    "bundle-all": "node scripts/bundle-native.js && node scripts/build.js"
+    "bundle-all": "node scripts/bundle-native.js && node scripts/build.js",
+    "generate-update": "node scripts/generate-update-json.js"
   },
   "repository": {
     "type": "git",
