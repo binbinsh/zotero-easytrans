@@ -22,11 +22,17 @@ var EasyTrans = {
         "en": "English",
         "zh-CN": "简体中文",
         "zh-TW": "繁體中文",
+        "hi": "हिन्दी",
+        "es": "Español",
+        "ar": "العربية",
+        "fr": "Français",
+        "pt": "Português",
+        "ru": "Русский",
+        "de": "Deutsch",
         "ja": "日本語",
         "ko": "한국어",
-        "fr": "Français",
-        "de": "Deutsch",
-        "es": "Español"
+        "it": "Italiano",
+        "nl": "Nederlands"
     },
 
     /**

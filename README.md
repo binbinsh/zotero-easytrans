@@ -39,8 +39,8 @@ Translate selected text inside Zotero’s PDF reader and save the translation as
 - Keeps your data local
 - Translations are saved as annotations for later review
 
-## Supported Languages (Current)
-English, Simplified Chinese, Traditional Chinese, Japanese, Korean, French, German, Spanish
+## Supported Languages
+English, Simplified Chinese, Traditional Chinese, Hindi, Spanish, Arabic, French, Portuguese, Russian, German, Japanese, Korean, Italian, Dutch
 
 ## How To Use
 1. Install `zotero-easytrans.xpi` in Zotero 8 (Tools → Add-ons → Install Add-on From File).

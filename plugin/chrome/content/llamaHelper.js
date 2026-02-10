@@ -102,15 +102,17 @@ class LlamaHelper {
             "en": "English",
             "zh-CN": "Simplified Chinese",
             "zh-TW": "Traditional Chinese",
-            "ja": "Japanese",
-            "ko": "Korean",
-            "fr": "French",
-            "de": "German",
+            "hi": "Hindi",
             "es": "Spanish",
+            "ar": "Arabic",
+            "fr": "French",
             "pt": "Portuguese",
             "ru": "Russian",
-            "ar": "Arabic",
-            "it": "Italian"
+            "de": "German",
+            "ja": "Japanese",
+            "ko": "Korean",
+            "it": "Italian",
+            "nl": "Dutch"
         };
         return langMap[langCode] || langCode;
     }
