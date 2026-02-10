@@ -4,25 +4,25 @@ Zotero EasyTrans is a Zotero 8 plugin for offline translation of selected PDF te
 
 ## Screenshots
 
-<figure align="center">
-  <img src="docs/screenshots/01-selection.png" alt="Selection translate popup" width="320" />
-  <figcaption>Selection translate popup</figcaption>
-</figure>
+<p align="center">
+  <img src="docs/screenshots/01-selection.png" alt="Selection translate popup" width="320" /><br>
+  <sub>Selection translate popup</sub>
+</p>
 
-<figure align="center">
-  <img src="docs/screenshots/02-panel.png" alt="EasyTrans panel" width="320" />
-  <figcaption>EasyTrans panel</figcaption>
-</figure>
+<p align="center">
+  <img src="docs/screenshots/02-panel.png" alt="EasyTrans panel" width="320" /><br>
+  <sub>EasyTrans panel</sub>
+</p>
 
-<figure align="center">
-  <img src="docs/screenshots/03-annotation.png" alt="Highlight + translation note" width="540" />
-  <figcaption>Highlight + translation note</figcaption>
-</figure>
+<p align="center">
+  <img src="docs/screenshots/03-annotation.png" alt="Highlight + translation note" width="540" /><br>
+  <sub>Highlight + translation note</sub>
+</p>
 
-<figure align="center">
-  <img src="docs/screenshots/04-popup.png" alt="Translation result bubble" width="540" />
-  <figcaption>Translation result bubble</figcaption>
-</figure>
+<p align="center">
+  <img src="docs/screenshots/04-popup.png" alt="Translation result bubble" width="540" /><br>
+  <sub>Translation result bubble</sub>
+</p>
 
 ## What It Does
 Translate selected text inside Zotero's PDF reader and save the translation as an annotation.
