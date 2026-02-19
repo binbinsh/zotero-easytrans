@@ -18,7 +18,7 @@
 .easytrans-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 8px;
     padding: 8px 12px;
     border-bottom: 1px solid var(--fill-quinary);
@@ -29,11 +29,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
-}
-
-.easytrans-controls-right {
-    display: flex;
-    align-items: center;
 }
 
 .easytrans-label {
@@ -61,11 +56,14 @@
     cursor: not-allowed;
 }
 
-.easytrans-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 6px 12px;
+/* Button shown in collapsible section title bar (next to EasyTrans title) */
+collapsible-section > .head toolbarbutton.easytrans-section-model-button,
+collapsible-section > .head button.easytrans-section-model-button {
+    width: auto !important;
+    height: 22px;
+    min-height: 22px;
+    padding: 0 10px !important;
+    margin-inline: 6px 6px;
     border: 1px solid var(--accent-blue, #2d74ff) !important;
     border-radius: 4px;
     background: var(--accent-blue, #2d74ff) !important;
@@ -75,22 +73,27 @@
     line-height: 1;
     white-space: nowrap;
     cursor: pointer;
-    transition: background 0.2s;
 }
 
-.easytrans-button:hover {
+collapsible-section > .head toolbarbutton.easytrans-section-model-button:hover,
+collapsible-section > .head button.easytrans-section-model-button:hover {
     background: var(--accent-blue-darker, #2258c7) !important;
     border-color: var(--accent-blue-darker, #2258c7) !important;
-    color: #fff !important;
 }
 
-.easytrans-button:active {
-    background: var(--accent-blue-darker, #2258c7) !important;
-}
-
-.easytrans-button:disabled {
-    opacity: 0.5;
+collapsible-section > .head toolbarbutton.easytrans-section-model-button:disabled,
+collapsible-section > .head button.easytrans-section-model-button:disabled {
+    opacity: 0.6;
     cursor: not-allowed;
+}
+
+collapsible-section > .head toolbarbutton.easytrans-section-model-button .toolbarbutton-icon {
+    display: none !important;
+}
+
+collapsible-section > .head toolbarbutton.easytrans-section-model-button .toolbarbutton-text {
+    display: inline-block !important;
+    margin: 0 !important;
 }
 
 .easytrans-placeholder {

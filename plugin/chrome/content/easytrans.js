@@ -870,25 +870,34 @@ var EasyTrans = {
                         Zotero.debug("EasyTrans: Async render failed - " + e.message);
                     }
 
-                    const downloadBtn = body.querySelector("#easytrans-download-model-btn");
+                    const downloadBtn = TranslationPane?.ensureSectionDownloadButton?.(body);
 
                     if (!downloadBtn) return;
+
+                    const setModelButtonLabel = (label) => {
+                        if (typeof TranslationPane?.setDownloadButtonLabel === "function") {
+                            TranslationPane.setDownloadButtonLabel(downloadBtn, label);
+                        } else {
+                            downloadBtn.textContent = label;
+                            downloadBtn.setAttribute?.("label", label);
+                        }
+                    };
 
                     try {
                         const modelInfo = await self.getModelInfo();
                         Zotero.debug("EasyTrans: Model info - " + JSON.stringify(modelInfo));
 
                         if (modelInfo.downloaded) {
-                            downloadBtn.textContent = `Model ready (${modelInfo.sizeFormatted})`;
+                            setModelButtonLabel(`Model ready (${modelInfo.sizeFormatted})`);
                         } else {
                             const expectedSize = modelInfo.expectedSizeFormatted || modelInfo.sizeFormatted || "";
-                            downloadBtn.textContent = expectedSize
+                            setModelButtonLabel(expectedSize
                                 ? `Download Model (${expectedSize})`
-                                : "Download Model";
+                                : "Download Model");
                         }
                     } catch (e) {
                         Zotero.debug("EasyTrans: Error in onAsyncRender - " + e.message);
-                        downloadBtn.textContent = "Download Model";
+                        setModelButtonLabel("Download Model");
                     }
                 }
             });

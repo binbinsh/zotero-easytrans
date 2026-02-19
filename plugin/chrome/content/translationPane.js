@@ -42,32 +42,7 @@ var TranslationPane = {
         }
         left.appendChild(langSelect);
 
-        const right = doc.createElement("div");
-        right.className = "easytrans-controls-right";
-
-        const downloadBtn = doc.createElement("button");
-        downloadBtn.id = "easytrans-download-model-btn";
-        downloadBtn.className = "easytrans-button";
-        downloadBtn.textContent = "Download Model";
-        const baseBg = "var(--accent-blue, #2d74ff)";
-        const hoverBg = "var(--accent-blue-darker, #2258c7)";
-        downloadBtn.style.background = baseBg;
-        downloadBtn.style.borderColor = baseBg;
-        downloadBtn.style.color = "#fff";
-        downloadBtn.addEventListener("mouseenter", () => {
-            downloadBtn.style.background = hoverBg;
-            downloadBtn.style.borderColor = hoverBg;
-            downloadBtn.style.color = "#fff";
-        });
-        downloadBtn.addEventListener("mouseleave", () => {
-            downloadBtn.style.background = baseBg;
-            downloadBtn.style.borderColor = baseBg;
-            downloadBtn.style.color = "#fff";
-        });
-        right.appendChild(downloadBtn);
-
         header.appendChild(left);
-        header.appendChild(right);
 
         container.appendChild(header);
 
@@ -91,6 +66,9 @@ var TranslationPane = {
         container.appendChild(translations);
 
         body.appendChild(container);
+
+        // Place model status/download button in section header (right side of EasyTrans title)
+        this.ensureSectionDownloadButton(body);
 
         // Bind event listeners
         this.bindEvents(body);
@@ -168,12 +146,6 @@ var TranslationPane = {
      * Bind event listeners
      */
     bindEvents(body) {
-        // Download model button
-        const downloadBtn = body.querySelector("#easytrans-download-model-btn");
-        if (downloadBtn) {
-            downloadBtn.addEventListener("click", () => this.handleDownloadModel(body));
-        }
-
         // Language selection
         const langSelect = body.querySelector("#easytrans-target-lang");
         if (langSelect) {
@@ -183,6 +155,56 @@ var TranslationPane = {
         }
 
         // No synchronized scrolling needed in list-only view
+    },
+
+    /**
+     * Ensure the model button is rendered in section header (not inside body)
+     */
+    ensureSectionDownloadButton(body) {
+        const doc = body?.ownerDocument || document;
+        const section = body?.closest?.("collapsible-section");
+        const head = section?.querySelector?.(":scope > .head") || section?.querySelector?.(".head");
+        if (!head) return null;
+
+        let downloadBtn = section.querySelector("#easytrans-download-model-btn");
+        if (!downloadBtn) {
+            downloadBtn = typeof doc.createXULElement === "function"
+                ? doc.createXULElement("toolbarbutton")
+                : doc.createElement("button");
+            downloadBtn.id = "easytrans-download-model-btn";
+            downloadBtn.className = "easytrans-section-model-button section-custom-button";
+            this.setDownloadButtonLabel(downloadBtn, "Download Model");
+
+            const twisty = head.querySelector(".twisty");
+            if (twisty?.parentNode === head) {
+                head.insertBefore(downloadBtn, twisty);
+            } else {
+                head.appendChild(downloadBtn);
+            }
+        }
+
+        if (!downloadBtn.dataset.easytransBound) {
+            const activateEvent = downloadBtn.localName === "toolbarbutton" ? "command" : "click";
+            downloadBtn.addEventListener(activateEvent, (event) => {
+                event.preventDefault?.();
+                event.stopPropagation?.();
+                this.handleDownloadModel(body);
+            });
+            downloadBtn.dataset.easytransBound = "1";
+        }
+
+        return downloadBtn;
+    },
+
+    setDownloadButtonLabel(button, label) {
+        if (!button) return;
+        button.textContent = label;
+        if (typeof button.setAttribute === "function") {
+            button.setAttribute("label", label);
+        }
+        try {
+            button.label = label;
+        } catch (e) {}
     },
 
     /**
@@ -234,6 +256,11 @@ var TranslationPane = {
      * Handle download model button
      */
     async handleDownloadModel(body) {
+        const downloadBtn = this.ensureSectionDownloadButton(body);
+        if (downloadBtn) {
+            downloadBtn.disabled = true;
+        }
+
         try {
             const win = body.ownerDocument?.defaultView;
             const success = await EasyTrans.downloadModel(win);
@@ -242,6 +269,10 @@ var TranslationPane = {
             }
         } catch (error) {
             this.updateStatus(body, "Error: " + error.message);
+        } finally {
+            if (downloadBtn) {
+                downloadBtn.disabled = false;
+            }
         }
     },
 
