@@ -1,6 +1,6 @@
 {
   "name": "zotero-easytrans",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Offline translation plugin for Zotero 8 using TranslateGemma 4B",
   "main": "scripts/build.js",
   "scripts": {

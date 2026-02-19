@@ -168,11 +168,10 @@ var TranslationPane = {
 
         let downloadBtn = section.querySelector("#easytrans-download-model-btn");
         if (!downloadBtn) {
-            downloadBtn = typeof doc.createXULElement === "function"
-                ? doc.createXULElement("toolbarbutton")
-                : doc.createElement("button");
+            downloadBtn = doc.createElement("button");
             downloadBtn.id = "easytrans-download-model-btn";
             downloadBtn.className = "easytrans-section-model-button section-custom-button";
+            downloadBtn.type = "button";
             this.setDownloadButtonLabel(downloadBtn, "Download Model");
 
             const twisty = head.querySelector(".twisty");
@@ -184,8 +183,7 @@ var TranslationPane = {
         }
 
         if (!downloadBtn.dataset.easytransBound) {
-            const activateEvent = downloadBtn.localName === "toolbarbutton" ? "command" : "click";
-            downloadBtn.addEventListener(activateEvent, (event) => {
+            downloadBtn.addEventListener("click", (event) => {
                 event.preventDefault?.();
                 event.stopPropagation?.();
                 this.handleDownloadModel(body);

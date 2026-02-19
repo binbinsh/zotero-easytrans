@@ -57,43 +57,46 @@
 }
 
 /* Button shown in collapsible section title bar (next to EasyTrans title) */
-collapsible-section > .head toolbarbutton.easytrans-section-model-button,
 collapsible-section > .head button.easytrans-section-model-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto !important;
     width: auto !important;
+    min-width: 168px;
     height: 22px;
     min-height: 22px;
     padding: 0 10px !important;
-    margin-inline: 6px 6px;
+    margin-inline: 6px 4px;
     border: 1px solid var(--accent-blue, #2d74ff) !important;
     border-radius: 4px;
     background: var(--accent-blue, #2d74ff) !important;
     color: #fff !important;
+    box-sizing: border-box;
+    appearance: none;
+    -moz-appearance: none;
     font-size: 12px;
     font-weight: 500;
-    line-height: 1;
+    line-height: 20px;
     white-space: nowrap;
+    text-align: center;
+    text-decoration: none;
     cursor: pointer;
 }
 
-collapsible-section > .head toolbarbutton.easytrans-section-model-button:hover,
 collapsible-section > .head button.easytrans-section-model-button:hover {
     background: var(--accent-blue-darker, #2258c7) !important;
     border-color: var(--accent-blue-darker, #2258c7) !important;
 }
 
-collapsible-section > .head toolbarbutton.easytrans-section-model-button:disabled,
 collapsible-section > .head button.easytrans-section-model-button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
 
-collapsible-section > .head toolbarbutton.easytrans-section-model-button .toolbarbutton-icon {
-    display: none !important;
-}
-
-collapsible-section > .head toolbarbutton.easytrans-section-model-button .toolbarbutton-text {
-    display: inline-block !important;
-    margin: 0 !important;
+collapsible-section > .head button.easytrans-section-model-button {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .easytrans-placeholder {
