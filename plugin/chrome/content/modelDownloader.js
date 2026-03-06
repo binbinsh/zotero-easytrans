@@ -1,6 +1,6 @@
 /* eslint-disable no-undef */
 /**
- * ModelDownloader - Automatic model download with progress tracking
+ * ModelDownloader - Automatic model download with inline progress state
  * Downloads TranslateGemma 4B GGUF model from HuggingFace with mirror support
  * Uses chunked download to handle files > 2GB
  */
@@ -19,8 +19,8 @@ class ModelDownloader {
         this.CHUNK_SIZE = 50 * 1024 * 1024;
 
         // Retry settings
-        this.MAX_CHUNK_RETRIES = 10;  // More retries per chunk
-        this.CHUNK_TIMEOUT = 180000;  // 3 minutes per chunk
+        this.MAX_CHUNK_RETRIES = 10;
+        this.CHUNK_TIMEOUT = 180000;
 
         // Download sources (try HuggingFace first, then China mirror as fallback)
         this.DOWNLOAD_SOURCES = [
@@ -37,6 +37,187 @@ class ModelDownloader {
         // Speed calculation with rolling average
         this.speedHistory = [];
         this.speedHistoryMaxSize = 10;
+
+        this.listeners = new Set();
+        this.state = this.buildIdleState();
+    }
+
+    subscribe(listener) {
+        if (typeof listener !== "function") {
+            return () => {};
+        }
+
+        this.listeners.add(listener);
+
+        try {
+            listener(this.getState());
+        } catch (e) {
+            Zotero.debug("ModelDownloader: State listener failed - " + e.message);
+        }
+
+        return () => {
+            this.listeners.delete(listener);
+        };
+    }
+
+    emitState() {
+        const snapshot = this.getState();
+        for (const listener of [...this.listeners]) {
+            try {
+                listener(snapshot);
+            } catch (e) {
+                Zotero.debug("ModelDownloader: State listener failed - " + e.message);
+            }
+        }
+    }
+
+    getState() {
+        return { ...this.state };
+    }
+
+    setState(nextState) {
+        this.state = {
+            ...this.state,
+            ...nextState
+        };
+        this.emitState();
+        return this.getState();
+    }
+
+    getExpectedSizeFormatted() {
+        return this.formatBytes(this.MODEL_SIZE);
+    }
+
+    getProgressLabel(percent) {
+        const normalized = Math.max(0, Math.min(100, Math.round(percent || 0)));
+        return `Cancel Download (${normalized}%)`;
+    }
+
+    buildIdleState(extra = {}) {
+        return {
+            phase: "idle",
+            buttonLabel: "Download Model",
+            buttonMode: "download",
+            buttonDisabled: false,
+            progressPercent: 0,
+            statusText: "TranslateGemma 4B model required before translation.",
+            detailText: `Expected download size: ${this.getExpectedSizeFormatted()}.`,
+            isDownloaded: false,
+            hasPartial: false,
+            ...extra
+        };
+    }
+
+    buildPartialState(downloadedBytes, extra = {}) {
+        const progressPercent = this.MODEL_SIZE > 0
+            ? (downloadedBytes / this.MODEL_SIZE) * 100
+            : 0;
+
+        return {
+            phase: "partial",
+            buttonLabel: `Resume Download (${Math.round(progressPercent)}%)`,
+            buttonMode: "download",
+            buttonDisabled: false,
+            progressPercent,
+            statusText: "Partial download found. Click to resume.",
+            detailText: `${this.formatBytes(downloadedBytes)} / ${this.getExpectedSizeFormatted()} downloaded.`,
+            isDownloaded: false,
+            hasPartial: true,
+            ...extra
+        };
+    }
+
+    buildReadyState(sizeFormatted, extra = {}) {
+        return {
+            phase: "ready",
+            buttonLabel: "Model Ready",
+            buttonMode: "ready",
+            buttonDisabled: true,
+            progressPercent: 100,
+            statusText: `TranslateGemma 4B is ready (${sizeFormatted}).`,
+            detailText: "Offline translation is available.",
+            isDownloaded: true,
+            hasPartial: false,
+            ...extra
+        };
+    }
+
+    buildCancelledState(downloadedBytes, extra = {}) {
+        if (downloadedBytes > 0) {
+            return this.buildPartialState(downloadedBytes, {
+                phase: "cancelled",
+                statusText: "Download cancelled. Click to resume.",
+                ...extra
+            });
+        }
+
+        return this.buildIdleState({
+            phase: "cancelled",
+            statusText: "Download cancelled.",
+            detailText: `Expected download size: ${this.getExpectedSizeFormatted()}.`,
+            ...extra
+        });
+    }
+
+    buildErrorState(message, downloadedBytes, extra = {}) {
+        if (downloadedBytes > 0) {
+            return this.buildPartialState(downloadedBytes, {
+                phase: "error",
+                statusText: "Download failed. Click to resume.",
+                detailText: `${message} Partial download kept at ${this.formatBytes(downloadedBytes)}.`,
+                ...extra
+            });
+        }
+
+        return this.buildIdleState({
+            phase: "error",
+            buttonLabel: "Retry Download",
+            statusText: "Download failed. Click to retry.",
+            detailText: message,
+            ...extra
+        });
+    }
+
+    buildDownloadingState({ source, progress, downloaded, total, speed, statusText, detailText }) {
+        return {
+            phase: "downloading",
+            buttonLabel: this.getProgressLabel(progress),
+            buttonMode: "cancel",
+            buttonDisabled: false,
+            progressPercent: progress,
+            statusText: statusText || `Downloading from ${source}...`,
+            detailText,
+            isDownloaded: false,
+            hasPartial: downloaded > 0
+        };
+    }
+
+    formatBytes(bytes) {
+        const value = Number(bytes) || 0;
+        if (value >= 1024 * 1024 * 1024) {
+            return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
+        }
+        if (value >= 1024 * 1024) {
+            return `${(value / 1024 / 1024).toFixed(1)} MB`;
+        }
+        if (value >= 1024) {
+            return `${(value / 1024).toFixed(1)} KB`;
+        }
+        return `${value} B`;
+    }
+
+    formatEta(seconds) {
+        if (!Number.isFinite(seconds) || seconds <= 0) {
+            return "";
+        }
+
+        if (seconds < 60) {
+            return `${Math.round(seconds)}s left`;
+        }
+        if (seconds < 3600) {
+            return `${Math.round(seconds / 60)}m left`;
+        }
+        return `${(seconds / 3600).toFixed(1)}h left`;
     }
 
     /**
@@ -70,7 +251,6 @@ class ModelDownloader {
             const exists = await IOUtils.exists(modelPath);
             if (!exists) return false;
 
-            // Check file size (should be > 2GB)
             const stat = await IOUtils.stat(modelPath);
             return stat.size > 2000000000;
         } catch (e) {
@@ -114,70 +294,46 @@ class ModelDownloader {
         this.speedHistory = [];
     }
 
-    /**
-     * Show download dialog and start download
-     */
-    async showDownloadDialog(window) {
-        if (await this.isModelDownloaded()) {
-            const result = Services.prompt.confirm(
-                window,
-                "EasyTrans: Model Already Downloaded",
-                "The translation model is already downloaded. Do you want to re-download it?"
-            );
-            if (!result) return true;
+    async refreshState() {
+        if (this.downloadInProgress) {
+            return this.getState();
         }
 
-        // Check for existing partial download
+        const modelInfo = await this.getModelInfo();
+        if (modelInfo.downloaded) {
+            return this.setState(this.buildReadyState(modelInfo.sizeFormatted));
+        }
+
         const existingSize = await this.getExistingDownloadSize();
-        let resumeDownload = false;
-
         if (existingSize > 0) {
-            const existingMB = (existingSize / 1024 / 1024).toFixed(1);
-            const result = Services.prompt.confirmEx(
-                window,
-                "EasyTrans: Resume Download?",
-                `Found incomplete download (${existingMB} MB downloaded).\n\n` +
-                `Do you want to resume the download?`,
-                Services.prompt.BUTTON_POS_0 * Services.prompt.BUTTON_TITLE_IS_STRING +
-                Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_IS_STRING +
-                Services.prompt.BUTTON_POS_2 * Services.prompt.BUTTON_TITLE_CANCEL,
-                "Resume", "Start Over", null, null, {}
-            );
-
-            if (result === 2) return false; // Cancel
-            resumeDownload = (result === 0); // Resume
+            return this.setState(this.buildPartialState(existingSize));
         }
 
-        if (!resumeDownload) {
-            // Show confirmation dialog with model info
-            const result = Services.prompt.confirmEx(
-                window,
-                "EasyTrans: Download Translation Model",
-                `The TranslateGemma 4B translation model needs to be downloaded.\n\n` +
-                `Model: translategemma-4b-it.Q4_K_M.gguf\n` +
-                `Size: ~2.5 GB\n` +
-                `Sources: HuggingFace Mirror (China) / HuggingFace\n\n` +
-                `Features:\n` +
-                `• Auto fallback between sources\n` +
-                `• Supports resume if interrupted\n` +
-                `• Auto-retry on network errors\n\n` +
-                `Do you want to download now?`,
-                Services.prompt.STD_YES_NO_BUTTONS,
-                null, null, null, null, {}
-            );
-
-            if (result !== 0) return false;
-        }
-
-        return await this.downloadWithProgressWindow(window, resumeDownload);
+        return this.setState(this.buildIdleState());
     }
 
     /**
-     * Download model with a progress window
+     * Start download without popup UI
      */
-    async downloadWithProgressWindow(parentWindow, resume = false) {
+    async showDownloadDialog() {
         if (this.downloadInProgress) {
-            Services.prompt.alert(parentWindow, "Download in Progress", "A download is already in progress.");
+            return false;
+        }
+
+        if (await this.isModelDownloaded()) {
+            await this.refreshState();
+            return true;
+        }
+
+        const existingSize = await this.getExistingDownloadSize();
+        return await this.downloadWithProgressUpdates(existingSize > 0);
+    }
+
+    /**
+     * Download model with inline progress state
+     */
+    async downloadWithProgressUpdates(resume = false) {
+        if (this.downloadInProgress) {
             return false;
         }
 
@@ -185,39 +341,43 @@ class ModelDownloader {
         this.cancelled = false;
         this.resetSpeedHistory();
 
-        // Create progress window
-        const progressWin = new Zotero.ProgressWindow({ closeOnClick: false });
-        progressWin.changeHeadline("EasyTrans: Downloading Model");
-
-        const progressItem = new progressWin.ItemProgress(
-            "chrome://easytrans/content/icons/translate.svg",
-            "TranslateGemma 4B Model"
-        );
-        progressItem.setProgress(0);
-        progressItem.setText("Preparing download...");
-        progressWin.show();
-
         try {
-            // Ensure model directory exists
             const modelDir = this.getModelDir();
             await IOUtils.makeDirectory(modelDir, { createAncestors: true });
 
             const modelPath = await this.getModelPath();
             const tempPath = await this.getTempPath();
 
-            // Get starting position for resume
             let startByte = 0;
             if (resume) {
                 startByte = await this.getExistingDownloadSize();
                 Zotero.debug(`ModelDownloader: Resuming from byte ${startByte}`);
             } else {
-                // Remove any existing temp file
                 try {
                     await IOUtils.remove(tempPath);
                 } catch (e) {}
             }
 
-            // Try each source until one succeeds
+            if (startByte > 0) {
+                this.setState(this.buildPartialState(startByte, {
+                    phase: "downloading",
+                    buttonLabel: this.getProgressLabel((startByte / this.MODEL_SIZE) * 100),
+                    buttonMode: "cancel",
+                    statusText: "Resuming model download...",
+                    detailText: `${this.formatBytes(startByte)} / ${this.getExpectedSizeFormatted()} downloaded.`
+                }));
+            } else {
+                this.setState(this.buildDownloadingState({
+                    source: "server",
+                    progress: 0,
+                    downloaded: 0,
+                    total: this.MODEL_SIZE,
+                    speed: 0,
+                    statusText: "Starting model download...",
+                    detailText: `0 B / ${this.getExpectedSizeFormatted()} downloaded.`
+                }));
+            }
+
             let success = false;
             let lastError = null;
 
@@ -226,44 +386,48 @@ class ModelDownloader {
 
                 if (this.cancelled) break;
 
-                progressItem.setText(`Connecting to ${source.name}...`);
+                this.setState({
+                    statusText: i === 0
+                        ? `Connecting to ${source.name}...`
+                        : `Retrying with ${source.name}...`,
+                    detailText: resume && startByte > 0
+                        ? `${this.formatBytes(startByte)} / ${this.getExpectedSizeFormatted()} downloaded.`
+                        : `0 B / ${this.getExpectedSizeFormatted()} downloaded.`
+                });
                 Zotero.debug(`ModelDownloader: Trying source ${source.name}`);
 
                 try {
-                    // First, get the total file size
                     const totalSize = await this.getFileSize(source.url);
                     Zotero.debug(`ModelDownloader: File size is ${totalSize} bytes`);
 
-                    // Download in chunks
                     success = await this.downloadInChunks(
                         source.url,
                         tempPath,
                         startByte,
                         totalSize,
                         (progress, downloaded, total, speed) => {
-                            progressItem.setProgress(progress);
-                            const downloadedMB = (downloaded / 1024 / 1024).toFixed(1);
-                            const totalMB = (total / 1024 / 1024).toFixed(1);
                             const smoothSpeed = this.calculateSmoothSpeed(speed);
-                            const speedMBps = (smoothSpeed / 1024 / 1024).toFixed(2);
+                            const detailParts = [
+                                `${this.formatBytes(downloaded)} / ${this.formatBytes(total)}`
+                            ];
 
-                            // Calculate ETA
-                            const remaining = total - downloaded;
-                            let etaText = "";
                             if (smoothSpeed > 0) {
-                                const etaSeconds = remaining / smoothSpeed;
-                                if (etaSeconds < 60) {
-                                    etaText = ` - ${Math.round(etaSeconds)}s left`;
-                                } else if (etaSeconds < 3600) {
-                                    etaText = ` - ${Math.round(etaSeconds / 60)}m left`;
-                                } else {
-                                    etaText = ` - ${(etaSeconds / 3600).toFixed(1)}h left`;
+                                detailParts.push(`${(smoothSpeed / 1024 / 1024).toFixed(2)} MB/s`);
+                                const eta = this.formatEta((total - downloaded) / smoothSpeed);
+                                if (eta) {
+                                    detailParts.push(eta);
                                 }
                             }
 
-                            progressItem.setText(
-                                `${downloadedMB} / ${totalMB} MB (${speedMBps} MB/s)${etaText}`
-                            );
+                            this.setState(this.buildDownloadingState({
+                                source: source.name,
+                                progress,
+                                downloaded,
+                                total,
+                                speed: smoothSpeed,
+                                statusText: `Downloading from ${source.name}...`,
+                                detailText: detailParts.join(" • ")
+                            }));
                         }
                     );
 
@@ -274,46 +438,42 @@ class ModelDownloader {
                 } catch (e) {
                     lastError = e;
                     Zotero.debug(`ModelDownloader: Source ${source.name} failed - ${e.message}`);
-
-                    // Reset for next source (but keep partial download for resume)
                     this.resetSpeedHistory();
+
+                    if (!this.cancelled && i < this.DOWNLOAD_SOURCES.length - 1) {
+                        startByte = await this.getExistingDownloadSize();
+                        const nextSource = this.DOWNLOAD_SOURCES[i + 1];
+                        this.setState({
+                            statusText: `${source.name} failed. Switching to ${nextSource.name}...`,
+                            detailText: `${e.message} Resuming from ${this.formatBytes(startByte)}.`
+                        });
+                    }
                 }
             }
 
             if (success) {
-                // Rename temp file to final name
                 await IOUtils.move(tempPath, modelPath);
-
-                progressItem.setProgress(100);
-                progressItem.setText("Download complete!");
-                progressWin.startCloseTimer(3000);
-
+                const modelInfo = await this.getModelInfo();
+                this.setState(this.buildReadyState(modelInfo.sizeFormatted, {
+                    statusText: `TranslateGemma 4B download complete (${modelInfo.sizeFormatted}).`,
+                    detailText: "Offline translation is available."
+                }));
                 Zotero.debug("ModelDownloader: Model downloaded successfully");
                 return true;
-            } else if (this.cancelled) {
-                progressItem.setError();
-                progressItem.setText("Download cancelled (can resume later)");
-                progressWin.startCloseTimer(3000);
-                return false;
-            } else {
-                throw lastError || new Error("All download sources failed");
             }
 
+            if (this.cancelled) {
+                const existingSize = await this.getExistingDownloadSize();
+                this.setState(this.buildCancelledState(existingSize));
+                return false;
+            }
+
+            throw lastError || new Error("All download sources failed");
         } catch (error) {
             Zotero.debug(`ModelDownloader: Download failed - ${error.message}`);
-            progressItem.setError();
-            progressItem.setText(`Error: ${error.message}`);
-            progressWin.startCloseTimer(5000);
-
-            Services.prompt.alert(
-                parentWindow,
-                "Download Failed",
-                `Failed to download the model:\n\n${error.message}\n\n` +
-                `Your partial download has been saved. You can resume later.\n\n` +
-                `Or manually download from:\n${this.DOWNLOAD_SOURCES[0].url}`
-            );
+            const existingSize = await this.getExistingDownloadSize();
+            this.setState(this.buildErrorState(error.message, existingSize));
             return false;
-
         } finally {
             this.downloadInProgress = false;
             this.currentXHR = null;
@@ -324,7 +484,7 @@ class ModelDownloader {
      * Get file size using HEAD request
      */
     async getFileSize(url) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const xhr = new XMLHttpRequest();
             xhr.open("HEAD", url, true);
 
@@ -334,7 +494,6 @@ class ModelDownloader {
                     if (contentLength) {
                         resolve(parseInt(contentLength, 10));
                     } else {
-                        // Fallback to known size
                         resolve(this.MODEL_SIZE);
                     }
                 } else if (xhr.status === 302 || xhr.status === 301) {
@@ -370,6 +529,19 @@ class ModelDownloader {
         let lastTime = Date.now();
         let lastBytes = startByte;
 
+        const reportProgress = () => {
+            const now = Date.now();
+            const timeDiff = (now - lastTime) / 1000;
+            const bytesDiff = currentByte - lastBytes;
+            const speed = timeDiff > 0 ? bytesDiff / timeDiff : 0;
+
+            lastTime = now;
+            lastBytes = currentByte;
+
+            const progress = (currentByte / totalSize) * 100;
+            onProgress?.(progress, currentByte, totalSize, speed);
+        };
+
         while (currentByte < totalSize) {
             if (this.cancelled) return false;
 
@@ -380,50 +552,34 @@ class ModelDownloader {
             try {
                 const chunkData = await this.downloadChunk(url, currentByte, endByte);
 
-                // Append chunk to file
                 await this.appendToFile(destPath, chunkData, currentByte === 0 && startByte === 0);
 
                 currentByte += chunkData.length;
-
-                // Calculate speed
-                const now = Date.now();
-                const timeDiff = (now - lastTime) / 1000;
-                const bytesDiff = currentByte - lastBytes;
-                const speed = timeDiff > 0 ? bytesDiff / timeDiff : 0;
-
-                lastTime = now;
-                lastBytes = currentByte;
-
-                // Report progress
-                const progress = (currentByte / totalSize) * 100;
-                onProgress?.(progress, currentByte, totalSize, speed);
-
+                reportProgress();
             } catch (e) {
-                // Retry logic for failed chunks
                 Zotero.debug(`ModelDownloader: Chunk download failed - ${e.message}, retrying...`);
 
                 let retries = 0;
-                const maxRetries = this.MAX_CHUNK_RETRIES;
                 let success = false;
 
-                while (retries < maxRetries && !this.cancelled) {
+                while (retries < this.MAX_CHUNK_RETRIES && !this.cancelled) {
                     retries++;
-                    // Exponential backoff: 3s, 6s, 9s, 12s...
                     await new Promise(resolve => setTimeout(resolve, 3000 * retries));
 
                     try {
                         const chunkData = await this.downloadChunk(url, currentByte, endByte);
                         await this.appendToFile(destPath, chunkData, false);
                         currentByte += chunkData.length;
+                        reportProgress();
                         success = true;
                         break;
                     } catch (retryError) {
-                        Zotero.debug(`ModelDownloader: Retry ${retries}/${maxRetries} failed - ${retryError.message}`);
+                        Zotero.debug(`ModelDownloader: Retry ${retries}/${this.MAX_CHUNK_RETRIES} failed - ${retryError.message}`);
                     }
                 }
 
                 if (!success) {
-                    throw new Error(`Failed to download chunk after ${maxRetries} retries`);
+                    throw new Error(`Failed to download chunk after ${this.MAX_CHUNK_RETRIES} retries`);
                 }
             }
         }
@@ -439,11 +595,19 @@ class ModelDownloader {
             const xhr = new XMLHttpRequest();
             this.currentXHR = xhr;
 
+            const clearCurrentXHR = () => {
+                if (this.currentXHR === xhr) {
+                    this.currentXHR = null;
+                }
+            };
+
             xhr.open("GET", url, true);
             xhr.responseType = "arraybuffer";
             xhr.setRequestHeader("Range", `bytes=${startByte}-${endByte}`);
 
             xhr.onload = () => {
+                clearCurrentXHR();
+
                 if (this.cancelled) {
                     reject(new Error("Download cancelled"));
                     return;
@@ -464,16 +628,21 @@ class ModelDownloader {
             };
 
             xhr.onerror = () => {
+                clearCurrentXHR();
                 reject(new Error("Network error - please check your connection"));
             };
 
+            xhr.onabort = () => {
+                clearCurrentXHR();
+                reject(new Error("Download cancelled"));
+            };
+
             xhr.ontimeout = () => {
+                clearCurrentXHR();
                 reject(new Error("Connection timed out"));
             };
 
-            // 3 minute timeout per chunk
             xhr.timeout = this.CHUNK_TIMEOUT || 180000;
-
             xhr.send();
         });
     }
@@ -483,10 +652,8 @@ class ModelDownloader {
      */
     async appendToFile(filePath, data, isNewFile) {
         if (isNewFile) {
-            // Create new file
             await IOUtils.write(filePath, data);
         } else {
-            // Append to existing file using mode option
             await IOUtils.write(filePath, data, { mode: "append" });
         }
     }
@@ -495,11 +662,21 @@ class ModelDownloader {
      * Cancel ongoing download
      */
     cancelDownload() {
+        if (!this.downloadInProgress) {
+            return;
+        }
+
         this.cancelled = true;
+        this.setState({
+            buttonLabel: "Cancelling...",
+            buttonDisabled: true,
+            statusText: "Cancelling download...",
+            detailText: "Stopping the current transfer."
+        });
+
         if (this.currentXHR) {
             this.currentXHR.abort();
         }
-        this.downloadInProgress = false;
     }
 
     /**
@@ -518,6 +695,7 @@ class ModelDownloader {
                 await IOUtils.remove(tempPath);
                 Zotero.debug("ModelDownloader: Temp file deleted");
             }
+            await this.refreshState();
             return true;
         } catch (e) {
             Zotero.debug(`ModelDownloader: Failed to delete model - ${e.message}`);
@@ -531,23 +709,16 @@ class ModelDownloader {
     async getModelInfo() {
         const modelPath = await this.getModelPath();
         const exists = await IOUtils.exists(modelPath);
-
-        const expectedGB = (this.MODEL_SIZE / 1024 / 1024 / 1024).toFixed(2);
-        const expectedMB = (this.MODEL_SIZE / 1024 / 1024).toFixed(2);
-        const expectedSizeFormatted = this.MODEL_SIZE >= 1024 * 1024 * 1024
-            ? `${expectedGB} GB`
-            : `${expectedMB} MB`;
+        const expectedSizeFormatted = this.getExpectedSizeFormatted();
 
         if (!exists) {
-            // Check for partial download
             const tempSize = await this.getExistingDownloadSize();
             if (tempSize > 0) {
-                const tempMB = (tempSize / 1024 / 1024).toFixed(2);
                 return {
                     downloaded: false,
                     path: modelPath,
                     size: 0,
-                    sizeFormatted: `Incomplete (${tempMB} MB downloaded)`,
+                    sizeFormatted: `Incomplete (${this.formatBytes(tempSize)} downloaded)`,
                     expectedSizeFormatted
                 };
             }
@@ -563,22 +734,11 @@ class ModelDownloader {
 
         try {
             const stat = await IOUtils.stat(modelPath);
-            const sizeMB = (stat.size / 1024 / 1024).toFixed(2);
-            const sizeGB = (stat.size / 1024 / 1024 / 1024).toFixed(2);
-            const sizeFormatted = stat.size >= 1024 * 1024 * 1024
-                ? `${sizeGB} GB`
-                : `${sizeMB} MB`;
-            const expectedGB = (this.MODEL_SIZE / 1024 / 1024 / 1024).toFixed(2);
-            const expectedMB = (this.MODEL_SIZE / 1024 / 1024).toFixed(2);
-            const expectedSizeFormatted = this.MODEL_SIZE >= 1024 * 1024 * 1024
-                ? `${expectedGB} GB`
-                : `${expectedMB} MB`;
-
             return {
                 downloaded: true,
                 path: modelPath,
                 size: stat.size,
-                sizeFormatted,
+                sizeFormatted: this.formatBytes(stat.size),
                 expectedSizeFormatted
             };
         } catch (e) {

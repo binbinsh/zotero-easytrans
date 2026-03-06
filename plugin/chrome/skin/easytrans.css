@@ -25,6 +25,33 @@
     background: var(--material-sidepane);
 }
 
+.easytrans-model-state {
+    padding: 8px 12px 10px;
+    border-bottom: 1px solid var(--fill-quinary);
+    background: var(--material-sidepane);
+}
+
+.easytrans-model-status {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fill-primary);
+}
+
+.easytrans-model-detail {
+    margin-top: 4px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--fill-secondary);
+}
+
+.easytrans-model-state[data-phase="error"] .easytrans-model-status {
+    color: #b42318;
+}
+
+.easytrans-model-state[data-phase="ready"] .easytrans-model-status {
+    color: #1f8b4c;
+}
+
 .easytrans-controls-left {
     display: flex;
     align-items: center;
@@ -58,6 +85,7 @@
 
 /* Button shown in collapsible section title bar (next to EasyTrans title) */
 collapsible-section > .head button.easytrans-section-model-button {
+    --easytrans-download-progress: 0%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -87,6 +115,26 @@ collapsible-section > .head button.easytrans-section-model-button {
 collapsible-section > .head button.easytrans-section-model-button:hover {
     background: var(--accent-blue-darker, #2258c7) !important;
     border-color: var(--accent-blue-darker, #2258c7) !important;
+}
+
+collapsible-section > .head button.easytrans-section-model-button.is-progress {
+    background: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.28) 0,
+        rgba(255, 255, 255, 0.28) var(--easytrans-download-progress),
+        var(--accent-blue, #2d74ff) var(--easytrans-download-progress),
+        var(--accent-blue, #2d74ff) 100%
+    ) !important;
+}
+
+collapsible-section > .head button.easytrans-section-model-button.is-ready {
+    background: #1f8b4c !important;
+    border-color: #1f8b4c !important;
+}
+
+collapsible-section > .head button.easytrans-section-model-button.is-error {
+    background: #b42318 !important;
+    border-color: #b42318 !important;
 }
 
 collapsible-section > .head button.easytrans-section-model-button:disabled {

@@ -46,6 +46,22 @@ var TranslationPane = {
 
         container.appendChild(header);
 
+        const modelState = doc.createElement("div");
+        modelState.className = "easytrans-model-state";
+        modelState.id = "easytrans-model-state";
+
+        const modelStatus = doc.createElement("div");
+        modelStatus.className = "easytrans-model-status";
+        modelStatus.id = "easytrans-model-status";
+        modelState.appendChild(modelStatus);
+
+        const modelDetail = doc.createElement("div");
+        modelDetail.className = "easytrans-model-detail";
+        modelDetail.id = "easytrans-model-detail";
+        modelState.appendChild(modelDetail);
+
+        container.appendChild(modelState);
+
         const translations = doc.createElement("div");
         translations.className = "easytrans-translations";
 
@@ -69,6 +85,7 @@ var TranslationPane = {
 
         // Place model status/download button in section header (right side of EasyTrans title)
         this.ensureSectionDownloadButton(body);
+        this.updateDownloadUI(body, EasyTrans.getDownloadState?.());
 
         // Bind event listeners
         this.bindEvents(body);
@@ -205,6 +222,49 @@ var TranslationPane = {
         } catch (e) {}
     },
 
+    updateDownloadUI(body, state) {
+        const downloadState = state || {
+            phase: "idle",
+            buttonLabel: "Download Model",
+            buttonMode: "download",
+            buttonDisabled: false,
+            progressPercent: 0,
+            statusText: "",
+            detailText: ""
+        };
+
+        const downloadBtn = this.ensureSectionDownloadButton(body);
+        if (downloadBtn) {
+            this.setDownloadButtonLabel(downloadBtn, downloadState.buttonLabel || "Download Model");
+            downloadBtn.disabled = !!downloadState.buttonDisabled;
+            downloadBtn.dataset.mode = downloadState.buttonMode || "download";
+            downloadBtn.dataset.phase = downloadState.phase || "idle";
+            downloadBtn.classList.toggle("is-progress", downloadState.phase === "downloading");
+            downloadBtn.classList.toggle("is-ready", downloadState.phase === "ready");
+            downloadBtn.classList.toggle("is-error", downloadState.phase === "error");
+            downloadBtn.style.setProperty(
+                "--easytrans-download-progress",
+                `${Math.max(0, Math.min(100, downloadState.progressPercent || 0))}%`
+            );
+            downloadBtn.title = [downloadState.statusText, downloadState.detailText]
+                .filter(Boolean)
+                .join("\n");
+        }
+
+        const modelState = body.querySelector("#easytrans-model-state");
+        const modelStatus = body.querySelector("#easytrans-model-status");
+        const modelDetail = body.querySelector("#easytrans-model-detail");
+        if (modelState) {
+            modelState.dataset.phase = downloadState.phase || "idle";
+        }
+        if (modelStatus) {
+            modelStatus.textContent = downloadState.statusText || "";
+        }
+        if (modelDetail) {
+            modelDetail.textContent = downloadState.detailText || "";
+        }
+    },
+
     /**
      * Render translated selections list
      */
@@ -254,23 +314,20 @@ var TranslationPane = {
      * Handle download model button
      */
     async handleDownloadModel(body) {
-        const downloadBtn = this.ensureSectionDownloadButton(body);
-        if (downloadBtn) {
-            downloadBtn.disabled = true;
-        }
-
         try {
-            const win = body.ownerDocument?.defaultView;
-            const success = await EasyTrans.downloadModel(win);
-            if (success && EasyTrans._refreshPane) {
-                EasyTrans._refreshPane();
+            const state = EasyTrans.getDownloadState?.();
+            if (state?.buttonMode === "cancel") {
+                EasyTrans.cancelModelDownload?.();
+                return;
             }
+
+            if (state?.buttonMode === "ready" || state?.buttonDisabled) {
+                return;
+            }
+
+            await EasyTrans.downloadModel(body.ownerDocument?.defaultView);
         } catch (error) {
             this.updateStatus(body, "Error: " + error.message);
-        } finally {
-            if (downloadBtn) {
-                downloadBtn.disabled = false;
-            }
         }
     },
 

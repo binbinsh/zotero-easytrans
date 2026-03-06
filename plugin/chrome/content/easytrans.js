@@ -16,6 +16,8 @@ var EasyTrans = {
     _readerIntegrationRegistered: false,
     translationRecords: new Map(),
     _summaryRefreshPending: false,
+    _paneBodies: new Set(),
+    _downloadStateUnsubscribe: null,
 
     // Supported languages
     LANGUAGES: {
@@ -49,6 +51,10 @@ var EasyTrans = {
                 this.rootURI + "chrome/content/modelDownloader.js"
             );
             this.modelDownloader = new ModelDownloader();
+            this._downloadStateUnsubscribe = this.modelDownloader.subscribe(() => {
+                this.updateDownloadUI();
+            });
+            await this.modelDownloader.refreshState();
             Zotero.debug("EasyTrans: ModelDownloader loaded");
 
             // Load translation pane UI
@@ -103,6 +109,10 @@ var EasyTrans = {
             await this.translationCache.close();
             this.translationCache = null;
         }
+
+        this._downloadStateUnsubscribe?.();
+        this._downloadStateUnsubscribe = null;
+        this._paneBodies.clear();
 
         this.initialized = false;
         Zotero.debug("EasyTrans: Shutdown complete");
@@ -191,17 +201,57 @@ var EasyTrans = {
     async downloadModel(window) {
         if (!this.modelDownloader) {
             Zotero.debug("EasyTrans: ModelDownloader not initialized");
-            Services.prompt.alert(window, "EasyTrans Error", "Model downloader not initialized. Please restart Zotero.");
             return false;
         }
 
         try {
-            const success = await this.modelDownloader.showDownloadDialog(window);
-            return success;
+            return await this.modelDownloader.showDownloadDialog(window);
         } catch (e) {
             Zotero.debug("EasyTrans: Download failed - " + e.message);
-            Services.prompt.alert(window, "EasyTrans Error", "Download failed: " + e.message);
             return false;
+        }
+    },
+
+    cancelModelDownload() {
+        this.modelDownloader?.cancelDownload?.();
+    },
+
+    getDownloadState() {
+        return this.modelDownloader?.getState?.() || null;
+    },
+
+    async refreshDownloadState() {
+        return await this.modelDownloader?.refreshState?.();
+    },
+
+    registerPaneBody(body) {
+        if (!body) return;
+        this._paneBodies.add(body);
+        this.updateDownloadUI();
+    },
+
+    unregisterPaneBody(body) {
+        if (!body) return;
+        this._paneBodies.delete(body);
+    },
+
+    updateDownloadUI() {
+        if (typeof TranslationPane?.updateDownloadUI !== "function") {
+            return;
+        }
+
+        const state = this.getDownloadState();
+        for (const body of [...this._paneBodies]) {
+            if (!body?.isConnected) {
+                this._paneBodies.delete(body);
+                continue;
+            }
+
+            try {
+                TranslationPane.updateDownloadUI(body, state);
+            } catch (e) {
+                Zotero.debug("EasyTrans: Failed to update download UI - " + e.message);
+            }
         }
     },
 
@@ -814,10 +864,12 @@ var EasyTrans = {
                     Zotero.debug("EasyTrans: Section onInit called");
                     // Store refresh function
                     self._refreshPane = refresh;
+                    self.registerPaneBody(body);
                 },
                 onDestroy: ({ paneID, doc, body }) => {
                     Zotero.debug("EasyTrans: Section onDestroy called");
                     self._refreshPane = null;
+                    self.unregisterPaneBody(body);
                 },
                 onItemChange: ({ paneID, doc, body, item, tabType, editable, setEnabled, setSectionSummary }) => {
                     // Always enable for testing
@@ -847,6 +899,7 @@ var EasyTrans = {
                             throw new Error("TranslationPane not loaded");
                         }
                         TranslationPane.render(body, item);
+                        self.registerPaneBody(body);
                         ensureSectionLabel(body);
                     } catch (e) {
                         Zotero.logError(e);
@@ -864,40 +917,12 @@ var EasyTrans = {
 
                     try {
                         await self.initializeComponents();
+                        await self.refreshDownloadState();
                         await TranslationPane.asyncRender(body, item);
+                        self.updateDownloadUI();
                         ensureSectionLabel(body);
                     } catch (e) {
                         Zotero.debug("EasyTrans: Async render failed - " + e.message);
-                    }
-
-                    const downloadBtn = TranslationPane?.ensureSectionDownloadButton?.(body);
-
-                    if (!downloadBtn) return;
-
-                    const setModelButtonLabel = (label) => {
-                        if (typeof TranslationPane?.setDownloadButtonLabel === "function") {
-                            TranslationPane.setDownloadButtonLabel(downloadBtn, label);
-                        } else {
-                            downloadBtn.textContent = label;
-                            downloadBtn.setAttribute?.("label", label);
-                        }
-                    };
-
-                    try {
-                        const modelInfo = await self.getModelInfo();
-                        Zotero.debug("EasyTrans: Model info - " + JSON.stringify(modelInfo));
-
-                        if (modelInfo.downloaded) {
-                            setModelButtonLabel(`Model ready (${modelInfo.sizeFormatted})`);
-                        } else {
-                            const expectedSize = modelInfo.expectedSizeFormatted || modelInfo.sizeFormatted || "";
-                            setModelButtonLabel(expectedSize
-                                ? `Download Model (${expectedSize})`
-                                : "Download Model");
-                        }
-                    } catch (e) {
-                        Zotero.debug("EasyTrans: Error in onAsyncRender - " + e.message);
-                        setModelButtonLabel("Download Model");
                     }
                 }
             });
