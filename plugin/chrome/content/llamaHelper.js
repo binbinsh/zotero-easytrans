@@ -10,6 +10,7 @@ class LlamaHelper {
         this._helperPath = null;
         this._proc = null;
         this._stdoutBuffer = "";
+        this._stderrBuffer = "";
         this._queue = Promise.resolve();
         this._reqId = 0;
         this._modelPath = null;
@@ -255,6 +256,9 @@ class LlamaHelper {
             environmentAppend: true
         });
 
+        this._stdoutBuffer = "";
+        this._stderrBuffer = "";
+
         // Drain stderr to avoid blocking if llama logs during model load
         this._stderrTask = this._drainStderr();
     }
@@ -272,7 +276,7 @@ class LlamaHelper {
 
             const respLine = await this._readLine();
             if (!respLine) {
-                throw new Error("Helper returned empty response");
+                throw new Error(this._buildEmptyResponseError());
             }
             let resp;
             try {
@@ -301,8 +305,13 @@ class LlamaHelper {
             }
 
             const chunk = await this._proc.stdout.readString();
-            if (chunk === null) {
-                return null;
+            if (!chunk) {
+                if (!this._stdoutBuffer) {
+                    return null;
+                }
+                const line = this._stdoutBuffer;
+                this._stdoutBuffer = "";
+                return line;
             }
             this._stdoutBuffer += chunk;
         }
@@ -313,9 +322,35 @@ class LlamaHelper {
         try {
             while (true) {
                 const chunk = await this._proc.stderr.readString();
-                if (chunk === null) break;
+                if (!chunk) break;
+                this._appendStderr(chunk);
             }
         } catch {}
+    }
+
+    _appendStderr(chunk) {
+        if (!chunk) return;
+        this._stderrBuffer += chunk;
+        const maxLength = 4000;
+        if (this._stderrBuffer.length > maxLength) {
+            this._stderrBuffer = this._stderrBuffer.slice(-maxLength);
+        }
+    }
+
+    _buildEmptyResponseError() {
+        const stderr = this._stderrBuffer.trim();
+        if (!stderr) {
+            return "Helper exited before responding";
+        }
+
+        const lines = stderr
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean);
+        const detail = lines.slice(-3).join(" | ");
+        return detail
+            ? `Helper exited before responding: ${detail}`
+            : "Helper exited before responding";
     }
 
     async _stopProcess() {
@@ -330,6 +365,7 @@ class LlamaHelper {
         this._stderrTask = null;
         this._proc = null;
         this._stdoutBuffer = "";
+        this._stderrBuffer = "";
     }
 
     _getPlatform() {
