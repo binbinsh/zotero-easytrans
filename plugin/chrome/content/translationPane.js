@@ -256,6 +256,7 @@ var TranslationPane = {
         const modelDetail = body.querySelector("#easytrans-model-detail");
         if (modelState) {
             modelState.dataset.phase = downloadState.phase || "idle";
+            modelState.hidden = downloadState.phase === "ready";
         }
         if (modelStatus) {
             modelStatus.textContent = downloadState.statusText || "";
@@ -321,11 +322,13 @@ var TranslationPane = {
                 return;
             }
 
-            if (state?.buttonMode === "ready" || state?.buttonDisabled) {
+            if (state?.buttonDisabled) {
                 return;
             }
 
-            await EasyTrans.downloadModel(body.ownerDocument?.defaultView);
+            await EasyTrans.downloadModel(body.ownerDocument?.defaultView, {
+                forceRedownload: state?.buttonMode === "redownload"
+            });
         } catch (error) {
             this.updateStatus(body, "Error: " + error.message);
         }

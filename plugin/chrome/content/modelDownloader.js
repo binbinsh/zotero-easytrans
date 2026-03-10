@@ -130,12 +130,12 @@ class ModelDownloader {
     buildReadyState(sizeFormatted, extra = {}) {
         return {
             phase: "ready",
-            buttonLabel: "Model Ready",
-            buttonMode: "ready",
-            buttonDisabled: true,
+            buttonLabel: `Model ready (${sizeFormatted})`,
+            buttonMode: "redownload",
+            buttonDisabled: false,
             progressPercent: 100,
             statusText: `TranslateGemma 4B is ready (${sizeFormatted}).`,
-            detailText: "Offline translation is available.",
+            detailText: "Click the button to re-download the model if needed.",
             isDownloaded: true,
             hasPartial: false,
             ...extra
@@ -315,24 +315,29 @@ class ModelDownloader {
     /**
      * Start download without popup UI
      */
-    async showDownloadDialog() {
+    async showDownloadDialog(options = {}) {
+        const forceRedownload = !!options.forceRedownload;
+
         if (this.downloadInProgress) {
             return false;
         }
 
-        if (await this.isModelDownloaded()) {
+        if (!forceRedownload && await this.isModelDownloaded()) {
             await this.refreshState();
             return true;
         }
 
         const existingSize = await this.getExistingDownloadSize();
-        return await this.downloadWithProgressUpdates(existingSize > 0);
+        return await this.downloadWithProgressUpdates({
+            resume: !forceRedownload && existingSize > 0,
+            forceRedownload
+        });
     }
 
     /**
      * Download model with inline progress state
      */
-    async downloadWithProgressUpdates(resume = false) {
+    async downloadWithProgressUpdates({ resume = false, forceRedownload = false } = {}) {
         if (this.downloadInProgress) {
             return false;
         }
@@ -349,6 +354,11 @@ class ModelDownloader {
             const tempPath = await this.getTempPath();
 
             let startByte = 0;
+            if (forceRedownload) {
+                try {
+                    await IOUtils.remove(modelPath);
+                } catch (e) {}
+            }
             if (resume) {
                 startByte = await this.getExistingDownloadSize();
                 Zotero.debug(`ModelDownloader: Resuming from byte ${startByte}`);

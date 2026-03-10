@@ -198,14 +198,14 @@ var EasyTrans = {
     /**
      * Download the translation model
      */
-    async downloadModel(window) {
+    async downloadModel(window, options = {}) {
         if (!this.modelDownloader) {
             Zotero.debug("EasyTrans: ModelDownloader not initialized");
             return false;
         }
 
         try {
-            return await this.modelDownloader.showDownloadDialog(window);
+            return await this.modelDownloader.showDownloadDialog(options);
         } catch (e) {
             Zotero.debug("EasyTrans: Download failed - " + e.message);
             return false;
