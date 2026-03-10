@@ -353,6 +353,8 @@ static void get_executable_dir(const char *argv0, char *out, size_t out_size) {
     }
 }
 
+#define BACKEND_DIR_BUF_SIZE 4096
+
 static int argmax(const float *logits, int n_vocab) {
     int best = 0;
     float max = logits[0];
@@ -502,7 +504,7 @@ int main(int argc, char **argv) {
     }
 
     llama_backend_init();
-    char backend_dir[PATH_MAX];
+    char backend_dir[BACKEND_DIR_BUF_SIZE];
     get_executable_dir(argv[0], backend_dir, sizeof(backend_dir));
     ggml_backend_load_all_from_path(backend_dir[0] ? backend_dir : NULL);
 
