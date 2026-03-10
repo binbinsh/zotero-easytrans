@@ -328,6 +328,31 @@ static int get_cpu_count(void) {
 #endif
 }
 
+static void get_executable_dir(const char *argv0, char *out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    out[0] = '\0';
+    if (!argv0 || !*argv0) return;
+
+    size_t len = strlen(argv0);
+    if (len >= out_size) len = out_size - 1;
+    memcpy(out, argv0, len);
+    out[len] = '\0';
+
+    char *last_slash = strrchr(out, '/');
+#ifdef _WIN32
+    char *last_backslash = strrchr(out, '\\');
+    if (!last_slash || (last_backslash && last_backslash > last_slash)) {
+        last_slash = last_backslash;
+    }
+#endif
+    if (last_slash) {
+        *last_slash = '\0';
+    } else {
+        strncpy(out, ".", out_size - 1);
+        out[out_size - 1] = '\0';
+    }
+}
+
 static int argmax(const float *logits, int n_vocab) {
     int best = 0;
     float max = logits[0];
@@ -477,7 +502,9 @@ int main(int argc, char **argv) {
     }
 
     llama_backend_init();
-    ggml_backend_load_all();
+    char backend_dir[PATH_MAX];
+    get_executable_dir(argv[0], backend_dir, sizeof(backend_dir));
+    ggml_backend_load_all_from_path(backend_dir[0] ? backend_dir : NULL);
 
     struct llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = -1;
