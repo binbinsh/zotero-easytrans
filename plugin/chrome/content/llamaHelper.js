@@ -142,15 +142,15 @@ class LlamaHelper {
         const currentVersion = EasyTrans?.version || "dev";
         let entries;
         try {
-            entries = await IOUtils.readDir(baseDir);
+            entries = await IOUtils.getChildren(baseDir, { ignoreAbsent: true });
         } catch {
             return;
         }
 
-        for (const entry of entries) {
-            if (!entry?.name) continue;
-            if (entry.name === currentVersion) continue;
-            const target = PathUtils.join(baseDir, entry.name);
+        for (const target of entries) {
+            const name = PathUtils.filename(target);
+            if (!name) continue;
+            if (name === currentVersion) continue;
             try {
                 await IOUtils.remove(target, { recursive: true });
             } catch (e) {
@@ -237,14 +237,14 @@ class LlamaHelper {
 
         let entries = [];
         try {
-            entries = await IOUtils.readDir(nativeDir);
+            entries = await IOUtils.getChildren(nativeDir, { ignoreAbsent: true });
         } catch (e) {
             Zotero.debug("LlamaHelper: Failed to read native dir for linux aliases - " + e.message);
             return;
         }
 
         const aliasable = entries
-            .map((entry) => entry?.name || "")
+            .map((entryPath) => PathUtils.filename(entryPath))
             .filter((name) => /^lib.+\.so\..+$/.test(name))
             .sort((a, b) => a.length - b.length || a.localeCompare(b));
 
