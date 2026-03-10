@@ -35,7 +35,7 @@ const LLAMA_RELEASES = {
         destDir: "win32"
     },
     "linux-x64": {
-        url: `https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_VERSION}/llama-${LLAMA_VERSION}-bin-ubuntu-x64.tar.gz`,
+        url: `https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_VERSION}/llama-${LLAMA_VERSION}-bin-ubuntu-vulkan-x64.tar.gz`,
         libName: "libllama.so",
         archiveType: "tar.gz",
         destDir: "linux"
@@ -141,6 +141,25 @@ function extractArchive(archivePath, destDir) {
     }
 }
 
+function createLinuxSoAliases(destDir) {
+    if (!fs.existsSync(destDir)) return;
+
+    const aliasable = fs.readdirSync(destDir)
+        .filter((name) => /^lib.+\.so\..+$/.test(name))
+        .sort((a, b) => a.length - b.length || a.localeCompare(b));
+
+    for (const sourceName of aliasable) {
+        const aliasName = sourceName.replace(/\.so\..+$/, ".so");
+        const srcPath = path.join(destDir, sourceName);
+        const dstPath = path.join(destDir, aliasName);
+        if (fs.existsSync(dstPath)) continue;
+
+        fs.copyFileSync(srcPath, dstPath);
+        fs.chmodSync(dstPath, 0o755);
+        console.log(`Installed alias: ${dstPath}`);
+    }
+}
+
 /**
  * Find file recursively
  */
@@ -231,6 +250,9 @@ async function bundleLlama(platform) {
                         }
                         console.log(`Installed: ${dstPath}`);
                     }
+                }
+                if (config.destDir === "linux") {
+                    createLinuxSoAliases(destDir);
                 }
             }
         } else {

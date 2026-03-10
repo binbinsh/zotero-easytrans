@@ -180,6 +180,7 @@ class LlamaHelper {
         }
 
         if (helperExists && missingLibs.length === 0) {
+            await this._ensureLinuxSoAliases(nativeDir, platform);
             this._nativeReady = true;
             return;
         }
@@ -190,6 +191,7 @@ class LlamaHelper {
         if (missingLibs.length > 0) {
             await this._extractLibs(nativeDir, missingLibs, platform);
         }
+        await this._ensureLinuxSoAliases(nativeDir, platform);
         this._nativeReady = true;
     }
 
@@ -224,6 +226,42 @@ class LlamaHelper {
                 }
             } catch (e) {
                 Zotero.debug("LlamaHelper: Failed to extract lib " + name + " - " + e.message);
+            }
+        }
+    }
+
+    async _ensureLinuxSoAliases(nativeDir, platform) {
+        if ((platform || this._getPlatform()) !== "linux") {
+            return;
+        }
+
+        let entries = [];
+        try {
+            entries = await IOUtils.readDir(nativeDir);
+        } catch (e) {
+            Zotero.debug("LlamaHelper: Failed to read native dir for linux aliases - " + e.message);
+            return;
+        }
+
+        const aliasable = entries
+            .map((entry) => entry?.name || "")
+            .filter((name) => /^lib.+\.so\..+$/.test(name))
+            .sort((a, b) => a.length - b.length || a.localeCompare(b));
+
+        for (const sourceName of aliasable) {
+            const aliasName = sourceName.replace(/\.so\..+$/, ".so");
+            const sourcePath = PathUtils.join(nativeDir, sourceName);
+            const aliasPath = PathUtils.join(nativeDir, aliasName);
+            if (await IOUtils.exists(aliasPath)) {
+                continue;
+            }
+
+            try {
+                const data = await IOUtils.read(sourcePath);
+                await IOUtils.write(aliasPath, data);
+                await IOUtils.setPermissions(aliasPath, 0o755);
+            } catch (e) {
+                Zotero.debug("LlamaHelper: Failed to create linux alias " + aliasName + " - " + e.message);
             }
         }
     }
@@ -409,6 +447,36 @@ class LlamaHelper {
                 "ggml-metal.dll",
                 "ggml-rpc.dll",
                 "mtmd.dll"
+            ];
+        }
+
+        if (platform === "linux") {
+            return [
+                "libllama.so",
+                "libllama.so.0",
+                "libllama.so.0.0.8252",
+                "libggml.so",
+                "libggml.so.0",
+                "libggml.so.0.9.7",
+                "libggml-base.so",
+                "libggml-base.so.0",
+                "libggml-base.so.0.9.7",
+                "libggml-rpc.so",
+                "libggml-vulkan.so",
+                "libggml-cpu-x64.so",
+                "libggml-cpu-sse42.so",
+                "libggml-cpu-ivybridge.so",
+                "libggml-cpu-haswell.so",
+                "libggml-cpu-skylakex.so",
+                "libggml-cpu-cannonlake.so",
+                "libggml-cpu-icelake.so",
+                "libggml-cpu-alderlake.so",
+                "libggml-cpu-sandybridge.so",
+                "libggml-cpu-cascadelake.so",
+                "libggml-cpu-cooperlake.so",
+                "libggml-cpu-sapphirerapids.so",
+                "libggml-cpu-zen4.so",
+                "libggml-cpu-piledriver.so"
             ];
         }
 
