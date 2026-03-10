@@ -216,6 +216,10 @@ var EasyTrans = {
         this.modelDownloader?.cancelDownload?.();
     },
 
+    async armModelRedownload() {
+        return await this.modelDownloader?.armRedownload?.();
+    },
+
     getDownloadState() {
         return this.modelDownloader?.getState?.() || null;
     },

@@ -44,8 +44,6 @@ var TranslationPane = {
 
         header.appendChild(left);
 
-        container.appendChild(header);
-
         const modelState = doc.createElement("div");
         modelState.className = "easytrans-model-state";
         modelState.id = "easytrans-model-state";
@@ -61,6 +59,7 @@ var TranslationPane = {
         modelState.appendChild(modelDetail);
 
         container.appendChild(modelState);
+        container.appendChild(header);
 
         const translations = doc.createElement("div");
         translations.className = "easytrans-translations";
@@ -256,7 +255,8 @@ var TranslationPane = {
         const modelDetail = body.querySelector("#easytrans-model-detail");
         if (modelState) {
             modelState.dataset.phase = downloadState.phase || "idle";
-            modelState.hidden = downloadState.phase === "ready";
+            modelState.hidden = downloadState.phase === "ready"
+                && downloadState.buttonMode === "ready";
         }
         if (modelStatus) {
             modelStatus.textContent = downloadState.statusText || "";
@@ -323,6 +323,11 @@ var TranslationPane = {
             }
 
             if (state?.buttonDisabled) {
+                return;
+            }
+
+            if (state?.buttonMode === "ready") {
+                await EasyTrans.armModelRedownload?.();
                 return;
             }
 

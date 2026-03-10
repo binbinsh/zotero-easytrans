@@ -131,15 +131,29 @@ class ModelDownloader {
         return {
             phase: "ready",
             buttonLabel: `Model ready (${sizeFormatted})`,
-            buttonMode: "redownload",
+            buttonMode: "ready",
             buttonDisabled: false,
             progressPercent: 100,
-            statusText: `TranslateGemma 4B is ready (${sizeFormatted}).`,
-            detailText: "Click the button to re-download the model if needed.",
+            statusText: "",
+            detailText: "",
             isDownloaded: true,
             hasPartial: false,
             ...extra
         };
+    }
+
+    async armRedownload() {
+        const modelInfo = await this.getModelInfo();
+        if (!modelInfo.downloaded) {
+            return await this.refreshState();
+        }
+
+        return this.setState(this.buildReadyState(modelInfo.sizeFormatted, {
+            buttonLabel: "Re-download Model",
+            buttonMode: "redownload",
+            statusText: "Click the button again to re-download the model.",
+            detailText: "The existing model file will be replaced."
+        }));
     }
 
     buildCancelledState(downloadedBytes, extra = {}) {
