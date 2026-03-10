@@ -53,7 +53,7 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          LLAMA_VERSION=b7947
+          LLAMA_VERSION=b8252
           TARBALL=/tmp/llama-src.tar.gz
           curl -L -o "${TARBALL}" "https://github.com/ggml-org/llama.cpp/archive/refs/tags/${LLAMA_VERSION}.tar.gz"
           tar -xzf "${TARBALL}" -C /tmp
@@ -64,7 +64,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $version = "b7947"
+          $version = "b8252"
           $zip = "$env:TEMP\\llama-src.zip"
           Invoke-WebRequest -Uri "https://github.com/ggml-org/llama.cpp/archive/refs/tags/$version.zip" -OutFile $zip
           Expand-Archive -Path $zip -DestinationPath $env:TEMP -Force

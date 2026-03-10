@@ -485,7 +485,7 @@ int main(int argc, char **argv) {
     mparams.use_mmap = true;
     mparams.use_mlock = false;
 
-    struct llama_model *model = llama_load_model_from_file(model_path, mparams);
+    struct llama_model *model = llama_model_load_from_file(model_path, mparams);
     if (!model) {
         die("Failed to load model");
         return 1;
@@ -512,10 +512,10 @@ int main(int argc, char **argv) {
     int n_threads = get_cpu_count();
     cparams.n_threads = n_threads;
     cparams.n_threads_batch = n_threads;
-    struct llama_context *ctx = llama_new_context_with_model(model, cparams);
+    struct llama_context *ctx = llama_init_from_model(model, cparams);
     if (!ctx) {
         die("Failed to create context");
-        llama_free_model(model);
+        llama_model_free(model);
         return 1;
     }
     llama_set_n_threads(ctx, cparams.n_threads, cparams.n_threads_batch);
@@ -573,7 +573,7 @@ int main(int argc, char **argv) {
 
     free(line);
     llama_free(ctx);
-    llama_free_model(model);
+    llama_model_free(model);
     llama_backend_free();
     return 0;
 }

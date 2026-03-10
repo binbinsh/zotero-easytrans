@@ -14,7 +14,7 @@ const LIB_DIR = path.join(__dirname, "..", "plugin", "chrome", "content", "lib")
 const TEMP_DIR = path.join(__dirname, "..", ".build-temp");
 
 // llama.cpp releases (from ggml-org)
-const LLAMA_VERSION = "b7947";
+const LLAMA_VERSION = "b8252";
 const LLAMA_RELEASES = {
     "darwin-arm64": {
         url: `https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_VERSION}/llama-${LLAMA_VERSION}-bin-macos-arm64.tar.gz`,

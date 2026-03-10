@@ -59,6 +59,29 @@ function findWinDll(libDir) {
     return fs.existsSync(dll) ? dll : null;
 }
 
+function findWinImportLibByBase(libDir, baseName) {
+    const candidates = [`${baseName}.lib`, `lib${baseName}.lib`];
+    for (const name of candidates) {
+        const p = path.join(libDir, name);
+        if (fs.existsSync(p)) return name;
+    }
+    return null;
+}
+
+function findWinMingwImportLibByBase(libDir, baseName) {
+    const candidates = [`${baseName}.dll.a`, `lib${baseName}.dll.a`];
+    for (const name of candidates) {
+        const p = path.join(libDir, name);
+        if (fs.existsSync(p)) return name;
+    }
+    return null;
+}
+
+function findWinDllByBase(libDir, baseName) {
+    const dll = path.join(libDir, `${baseName}.dll`);
+    return fs.existsSync(dll) ? dll : null;
+}
+
 function createDefFromDll(dllPath, defPath) {
     const output = execSync(`dumpbin /exports "${dllPath}"`, { stdio: ["ignore", "pipe", "pipe"] })
         .toString();
@@ -109,6 +132,38 @@ function ensureWinImportLib(libDir) {
     return path.basename(libPath);
 }
 
+function ensureWinImportLibByBase(libDir, baseName) {
+    const existing = findWinImportLibByBase(libDir, baseName);
+    if (existing) return existing;
+
+    const dll = findWinDllByBase(libDir, baseName);
+    if (!dll) return null;
+
+    const defPath = path.join(libDir, `${baseName}.def`);
+    const libPath = path.join(libDir, `${baseName}.lib`);
+
+    if (!fs.existsSync(defPath)) {
+        const ok = createDefFromDll(dll, defPath);
+        if (!ok) return null;
+    }
+
+    execSync(`lib /def:"${defPath}" /out:"${libPath}" /machine:x64`, { stdio: "inherit" });
+    return path.basename(libPath);
+}
+
+function resolveUnixLinkArg(libDir, baseName) {
+    if (process.platform === "darwin" || libDir.endsWith(`${path.sep}darwin`)) {
+        return `-l${baseName}`;
+    }
+
+    const so = path.join(libDir, `lib${baseName}.so`);
+    const soVer = path.join(libDir, `lib${baseName}.so.0`);
+    if (!fs.existsSync(so) && fs.existsSync(soVer)) {
+        return `-l:lib${baseName}.so.0`;
+    }
+    return `-l${baseName}`;
+}
+
 function build() {
     const args = parseArgs();
     const platform = args.platform || process.platform;
@@ -144,8 +199,9 @@ function build() {
     }
 
     if (dir === "win32") {
-        const importLib = ensureWinImportLib(libDir);
-        if (importLib) {
+        const llamaImportLib = ensureWinImportLibByBase(libDir, "llama");
+        const ggmlImportLib = ensureWinImportLibByBase(libDir, "ggml");
+        if (llamaImportLib && ggmlImportLib) {
             const includeFlags = includeDirs.map((inc) => `/I${q(inc)}`);
             const cmd = [
                 "cl",
@@ -156,18 +212,21 @@ function build() {
                 q(SRC),
                 "/link",
                 `/LIBPATH:${q(libDir)}`,
-                importLib
+                llamaImportLib,
+                ggmlImportLib
             ].join(" ");
             execSync(cmd, { stdio: "inherit" });
             return;
         }
 
-        const mingwLib = findWinMingwImportLib(libDir);
-        if (!mingwLib) {
-            throw new Error("Windows import library not found (expected llama.lib, libllama.lib, or *.dll.a)");
+        const mingwLlamaLib = findWinMingwImportLibByBase(libDir, "llama");
+        const mingwGgmlLib = findWinMingwImportLibByBase(libDir, "ggml");
+        if (!mingwLlamaLib || !mingwGgmlLib) {
+            throw new Error("Windows import libraries not found (expected llama/ggml .lib or *.dll.a files)");
         }
         const cc = process.env.CC || "gcc";
-        const libArg = mingwLib.startsWith("lib") ? "-llama" : `-l:${mingwLib}`;
+        const llamaLibArg = mingwLlamaLib.startsWith("lib") ? "-llama" : `-l:${mingwLlamaLib}`;
+        const ggmlLibArg = mingwGgmlLib.startsWith("lib") ? "-lggml" : `-l:${mingwGgmlLib}`;
         const cmd = [
             cc,
             "-O2",
@@ -177,21 +236,18 @@ function build() {
             ...includeDirs.flatMap((inc) => ["-I", q(inc)]),
             "-L",
             q(libDir),
-            libArg
+            llamaLibArg,
+            ggmlLibArg
         ].join(" ");
         execSync(cmd, { stdio: "inherit" });
         return;
     }
 
     const cc = process.env.CC || "cc";
-    let libArg = "-lllama";
-    if (dir === "linux") {
-        const so = path.join(libDir, "libllama.so");
-        const soVer = path.join(libDir, "libllama.so.0");
-        if (!fs.existsSync(so) && fs.existsSync(soVer)) {
-            libArg = "-l:libllama.so.0";
-        }
-    }
+    const libArgs = [
+        resolveUnixLinkArg(libDir, "llama"),
+        resolveUnixLinkArg(libDir, "ggml")
+    ];
     const cmd = [
         cc,
         "-O2",
@@ -201,7 +257,7 @@ function build() {
         ...includeDirs.flatMap((inc) => ["-I", q(inc)]),
         "-L",
         q(libDir),
-        libArg
+        ...libArgs
     ].join(" ");
 
     execSync(cmd, { stdio: "inherit" });
