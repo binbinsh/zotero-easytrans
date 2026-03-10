@@ -477,6 +477,7 @@ int main(int argc, char **argv) {
     }
 
     llama_backend_init();
+    ggml_backend_load_all();
 
     struct llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = -1;
