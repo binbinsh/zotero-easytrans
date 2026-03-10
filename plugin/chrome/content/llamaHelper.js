@@ -5,6 +5,7 @@
 
 class LlamaHelper {
     constructor() {
+        this._nativeCacheRevision = "20260310-1";
         this._initialized = false;
         this._tmpDir = null;
         this._helperPath = null;
@@ -126,20 +127,24 @@ class LlamaHelper {
         return Math.min(max, suggested);
     }
 
-    _getNativeDir() {
+    _getNativeCacheKey() {
         const version = EasyTrans?.version || "dev";
+        return `${version}-${this._nativeCacheRevision}`;
+    }
+
+    _getNativeDir() {
         return PathUtils.join(
             Zotero.Profile.dir,
             "easytrans",
             "native",
-            version,
+            this._getNativeCacheKey(),
             this._getPlatform()
         );
     }
 
     async _cleanupOldNativeDirs() {
         const baseDir = PathUtils.join(Zotero.Profile.dir, "easytrans", "native");
-        const currentVersion = EasyTrans?.version || "dev";
+        const currentVersion = this._getNativeCacheKey();
         let entries;
         try {
             entries = await IOUtils.getChildren(baseDir, { ignoreAbsent: true });
@@ -278,6 +283,8 @@ class LlamaHelper {
             "--server",
             "--model",
             modelPath,
+            "--backend-dir",
+            this._tmpDir,
             "--context",
             String(contextSize || 4096),
             "--max-tokens",

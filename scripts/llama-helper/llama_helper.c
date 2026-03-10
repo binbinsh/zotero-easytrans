@@ -487,12 +487,14 @@ static void usage() {
 
 int main(int argc, char **argv) {
     const char *model_path = NULL;
+    const char *backend_dir_arg = NULL;
     int context_size = 4096;
     int max_tokens = 2048;
     int server = 0;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) { model_path = argv[++i]; continue; }
+        if (strcmp(argv[i], "--backend-dir") == 0 && i + 1 < argc) { backend_dir_arg = argv[++i]; continue; }
         if (strcmp(argv[i], "--context") == 0 && i + 1 < argc) { context_size = atoi(argv[++i]); continue; }
         if (strcmp(argv[i], "--max-tokens") == 0 && i + 1 < argc) { max_tokens = atoi(argv[++i]); continue; }
         if (strcmp(argv[i], "--server") == 0) { server = 1; continue; }
@@ -505,7 +507,12 @@ int main(int argc, char **argv) {
 
     llama_backend_init();
     char backend_dir[BACKEND_DIR_BUF_SIZE];
-    get_executable_dir(argv[0], backend_dir, sizeof(backend_dir));
+    if (backend_dir_arg && *backend_dir_arg) {
+        strncpy(backend_dir, backend_dir_arg, sizeof(backend_dir) - 1);
+        backend_dir[sizeof(backend_dir) - 1] = '\0';
+    } else {
+        get_executable_dir(argv[0], backend_dir, sizeof(backend_dir));
+    }
     ggml_backend_load_all_from_path(backend_dir[0] ? backend_dir : NULL);
 
     struct llama_model_params mparams = llama_model_default_params();
