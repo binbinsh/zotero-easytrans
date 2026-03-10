@@ -3,8 +3,8 @@
     "easytrans@zotero-easytrans": {
       "updates": [
         {
-          "version": "1.0.7",
-          "update_link": "https://github.com/binbinsh/zotero-easytrans/releases/download/v1.0.7/zotero-easytrans-windows.xpi",
+          "version": "26.0310.1242",
+          "update_link": "https://github.com/binbinsh/zotero-easytrans/releases/download/v26.0310.1242/zotero-easytrans-windows.xpi",
           "applications": {
             "zotero": {
               "strict_min_version": "7.0",
